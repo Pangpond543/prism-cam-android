@@ -1,0 +1,12 @@
+# build output lives in %USERPROFILE%\PrismCamAndroidBuild — these are safety nets
+build/
+.gradle/
+.kotlin/
+local.properties
+*.iml
+.idea/
+apk/
+# signing material never goes in git (it lives in %USERPROFILE%\PrismKeys)
+*.jks
+*.keystore
+prism-cam-android.properties
