@@ -110,3 +110,5 @@
     the other).
   - Test hooks: `fakehands`, `fakeface`, `two`, `aidump`, `facepts`, `fxtab`, `propstab`, `studiorestore`; any test
     act that changes scenes keeps the user's scenes first (`files/studio/before-test.json`).
+
+- 2026-11-26 — **2.0.0 released** on GitHub (`apk/Prism-Cam-2.0.0.apk`, built 11-25 23:14 after the last code change; i18n audit empty). The in-app updater of 1.0.x sees it.
