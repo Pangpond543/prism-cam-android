@@ -117,11 +117,15 @@ class PrismCamera(private val app: Context) {
     /** photo needs the CPU effect path */
     var photoFx: (() -> com.prism.cam.effects.PhotoFx.Job?)? = null
 
+    /** the look is the camera layer's look (desktop: per-layer look) */
     fun useLook(l: com.prism.cam.effects.Look) {
         look = l
-        fx.colorMatrix = l.m; fx.vignette = l.vignette; fx.grain = l.grain
+        com.prism.cam.studio.Studio.camera?.let { if (it.look != l.id) { it.look = l.id; com.prism.cam.studio.Studio.commit("look") } }
         syncFx()
     }
+
+    /** the document changed the camera layer's look (undo, scene switch…) */
+    fun syncLook(id: String) { look = com.prism.cam.effects.Looks.of(id); syncFx() }
 
     fun fxReason(key: String, on: Boolean) {
         fxReasons = if (on) fxReasons + key else fxReasons - key
@@ -302,6 +306,7 @@ class PrismCamera(private val app: Context) {
             fxBound = fxWanted()
             if (fxBound) {
                 fx.uprightDeg = info.getSensorRotationDegrees(displayRotation)
+                fx.front = front
                 group.addEffect(com.prism.cam.effects.PrismEffect(fx))
             }
             if (!photo) {
@@ -366,7 +371,8 @@ class PrismCamera(private val app: Context) {
             // steady quality: with the GPU effect pipeline CameraX picked only ~5.5 Mbps for 1080p (24 without)
             .setTargetVideoEncodingBitRate(16_000_000)
             .build()
-        val b = VideoCapture.Builder(recorder).setTargetRotation(deviceRotation)
+        // front camera: save the clip mirrored like the screen and the photos (text / stickers stay readable)
+        val b = VideoCapture.Builder(recorder).setTargetRotation(deviceRotation).setMirrorMode(androidx.camera.core.MirrorMode.MIRROR_MODE_ON_FRONT_ONLY)
         if (Recorder.getVideoCapabilities(info).isStabilizationSupported) b.setVideoStabilizationEnabled(true)
         return b.build()
     }
@@ -434,6 +440,9 @@ class PrismCamera(private val app: Context) {
         displayRotation = r
         preview?.targetRotation = r
         camera?.cameraInfo?.let { fx.uprightDeg = it.getSensorRotationDegrees(r); if (fxBound) fx.refreshGeometry() }
+        // With an effect, CameraX fixes the processed preview's rotation when it binds: a rotation afterwards left the
+        // whole scene turned 90° (tablet, 2026-11-24). Rebind so the effect geometry is built for the new rotation.
+        if (fxBound && !recording && camera != null) { PrismLog.i("ROT rebind for effects (rotation $r)"); grabFreeze(); rebind() }
     }
 
     /** How the device is held (OrientationEventListener). Photos/videos follow this, not the screen. */
@@ -617,7 +626,7 @@ class PrismCamera(private val app: Context) {
         shots++
         playSound(MediaActionSound.SHUTTER_CLICK)
         val job = if (fxBound) photoFx?.invoke() ?: com.prism.cam.effects.PhotoFx.Job(
-            look, null, null, camera?.cameraInfo?.getSensorRotationDegrees(displayRotation) ?: 0, front,
+            camera?.cameraInfo?.getSensorRotationDegrees(displayRotation) ?: 0, null, look.vignette,
         ) else null
         if (job != null) { takeFxPhoto(ic, job, t0); return }
         val name = Gallery.newName()
@@ -651,7 +660,7 @@ class PrismCamera(private val app: Context) {
 
             override fun onCaptureSuccess(image: androidx.camera.core.ImageProxy) {
                 try {
-                    val out = image.use { com.prism.cam.effects.PhotoFx.process(it, job) }
+                    val out = image.use { com.prism.cam.effects.PhotoFx.process(it, job, fx) }
                     val uri = Gallery.saveJpeg(app, out, Gallery.newName())
                     out.recycle()
                     PrismLog.i("SHOT saved ${SystemClock.elapsedRealtime() - t0} ms after press (fx) → $uri")

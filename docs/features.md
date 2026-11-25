@@ -109,3 +109,55 @@
   `face:<id>|none`, `peace:0|1`, `portrait`, `pc`, `unpc`, `updcheck`, `vframe` (saves frame 1 s of the last video to
   `files/vframe.png` + logs rotation / bitrate). No spaces in acts (adb splits them).
   `bash tools/camtest.sh <name> "<acts>" [wait s] [out dir]` = cold start + screenshot + the new log lines.
+
+## Studio (2.0.0, `studio/*`, `effects/GlFx.kt`, `ui/LayersSheet.kt`, `ui/PropsSheet.kt`, `ui/StudioLayer.kt`)
+- Layers icon (top bar / left column, teal when the scene has layers). Every scene = a list of layers drawn on the GPU
+  each frame, front = top of the list. Types: camera, picture (JPG / PNG / WebP / HEIC), GIF (animated, Android 9+),
+  video (loop / mute / speed), text, sticker, shape, frame, finger drawing, face paint, VTuber character, face / hand
+  effects. Scenes: add, copy, delete, switch, slideshow 3 / 5 / 10 s. Undo / redo 60 steps. Auto-saved
+  (`files/studio/studio.json`, `.bak`, broken files kept aside).
+- On the picture: tap = select (dashed box: ⚙ settings, ✕ delete, corner dot = resize + turn, snaps to right angles),
+  drag = move, two fingers = resize + turn, tap a selected text = edit. A full-screen camera is only grabbed when it is
+  already selected (so tap-to-focus / swipe still work). Attached layers: drag = offset from the face / hand, pinch =
+  size relative to it.
+- Settings of a layer: Position (size, rotate, x / y, centre, flip, straighten, opacity, rectangle / circle, corner
+  radius, border + colour, shadow, crop 4 sides, blend), Colour (11 filters, brightness, contrast, saturation, hue,
+  green screen with green / blue / white / black + tolerance), Face / hand (see below), Motion (12 presets + speed,
+  keyframes), Content (text, colours, styles; sticker; shape + gradient; frame + tint; video loop / mute / speed;
+  pen colour / width / glow, undo line, clear; camera layouts).
+- Camera layouts: fill, fit (rounded, shadow), corner PiP, half, circle bubble (square crop), tilted card.
+- Templates: Vlog, Live, Cute, Podcast, VTuber (camera hidden, character on a gradient), Party (stars face paint,
+  light trails, hat on every face).
+- Photos with layers: the still is drawn through the same compositor at full resolution (same positions, face / hand
+  places, video frames). Video: what is on screen is recorded.
+- Project file: Layers → Share project = `.prismcam` (zip: studio.json + used media) to any app; Open project adds its
+  scenes.
+
+## Face & hands (2.0.0, `ai/Vision.kt`, `studio/Tracking.kt`, `studio/Gestures.kt`, `studio/FaceArt.kt`)
+- Trackers run only when something needs them (an attached layer, face paint, character, face / hand effect, a
+  command, recording a pose, calibration, "show tracked points"); master switches in ✦ → Tracking.
+- Tracking tab: faces / hands seen, AI ms, GPU or CPU per tracker; face / hands on-off; show tracked points (face
+  outline + hand skeleton, never in photos); GPU on-off; 1–4 faces; steadiness (One-Euro filter) face / hands; lag
+  compensation 0–120 ms (prediction); expression sensitivity; swap eyes; "fit to my face" (3 s resting face).
+- Stick any layer to: eyes, left / right eye, nose, mouth, forehead, top of head, chin, cheeks, ears, face centre ·
+  palm, fingertips, wrist. Which face (1–4) / hand (any / left / right). Follow rotation, size, head turn. Offset.
+  When lost: hide / stay / fade. Show only while: smile, open mouth, raise brows, kiss, eyes closed, wink L / R · hand
+  gestures.
+- **Between two hands** (attach mode `hands2`): sits in the middle of the same point on both hands (palm, a fingertip,
+  wrist), turns with the line between the hands (read left → right so it never flips), width = gap × size ("stretch
+  with the gap" on) or its own width; offsets in gap units. Show only while: 🫶 heart hands, 🙏 praying hands, or both
+  hands making the same gesture. Angles of every attached layer come from the face's / hand's up direction, so both
+  cameras (front is mirrored) agree.
+- Face tab: face sticker packs (now layers), 10 face paints (desktop facepaint.js, on the face mesh, far side hidden
+  when the head turns), VTuber characters cat / robot / ghost (desktop avatar.js), glowing face lines / eyes.
+- Hands tab: hand effects that mix — neon hands, fingertip light trail, energy orb in the palm (open hand = orb, fist =
+  burst), air drawing (draws on a drawing layer) · **Two hands**: ⚡ lightning between the index tips, 🔮 energy ball
+  between the palms, ready-made layers 💖 (with heart hands), ✨ (when praying), 🎀 text sign, 🌈 rainbow · ✌️ shutter.
+- Two-hand poses 🫶 / 🙏 (`Tracking.pair`, desktop rules) count as command triggers too.
+- Commands: trigger held 0.5 s, fires once, 1.2 s apart. Triggers: 8 expressions, 7 gestures, hand at mouth /
+  forehead / cheek / ear, own poses (record 3 s, kNN k = 5). Actions: photo, start / stop video, next / previous scene,
+  next filter, clear drawing, hide / show top layer. Saved in prefs; poses in `files/studio/poses.json`.
+
+## Speed (2.0.0)
+- "…" → Speed: fps, GPU ms per frame, canvas size, AI ms, layer count, GPU name. Light mode: canvas ≤ 1280 px and AI
+  every 100 ms instead of 66.

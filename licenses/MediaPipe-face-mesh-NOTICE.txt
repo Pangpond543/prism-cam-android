@@ -1,0 +1,4 @@
+app/src/main/assets/face_mesh.txt — texture coordinates and triangles of the MediaPipe canonical face model.
+MediaPipe (https://github.com/google-ai-edge/mediapipe), Copyright The MediaPipe Authors, Apache License 2.0
+(https://www.apache.org/licenses/LICENSE-2.0). The bundled .task / .tflite models in assets/models/ are from the same project
+under the same licence.

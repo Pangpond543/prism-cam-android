@@ -88,3 +88,21 @@ a red rounded square, timer pill on top, photo button available during recording
 | 4 ✅ (2026-11-24) | AI: background blur/remove, portrait mode, face stickers, peace-sign shutter |
 | 5 ✅ v1.0.0 (2026-11-24) | v1.0 on GitHub (own repo, e.g. `Pangpond543/prism-cam-android`) + in-app updater (downloads the APK, Android asks to install) |
 | 6 ✅ (in 1.0.0) | Send to Prism Cam on the PC |
+
+## Desktop parity plan (proposed 2026-11-24, after 1.0.1)
+User: "lots of PC features are missing — face tuning, hand tuning, layers; add files; stick things to hands and faces
+like the PC; make it as rich as the PC". Earlier "cut" decisions are reversed except what Android cannot do.
+
+| Phase | What | Notes |
+|---|---|---|
+| 7 ✅ 2.0.0 Layer engine + Studio | every layer drawn on the GPU each frame (camera, images, GIF, video, text, stickers, shapes, frames); Layers panel (order, show / hide / solo, lock, duplicate, multi-select, align); add files (gallery, Files, paste) + media library; corner handles, crop, snap guides; per-layer look (opacity, radius, border, shadow, blend, filter, chroma key); camera as a layer (fill / fit / PiP / half / circle bubble); undo / redo; scenes; auto-save project (+ .bak) | replaces the single overlay bitmap — needed by everything below |
+| 8 ✅ 2.0.0 Face tracking | Tracking panel (on/off, 1–4 faces, GPU/CPU, smoothing, lag compensation, expression sensitivity, face mesh, swap eyes, "fit to my face" 3 s); attach ANY layer to a face point (follow turn / size / head turn, offset, which face, when lost); face paint on the 3D mesh; VTuber avatars (cat / robot / ghost / own PNG); face gestures → commands | port of desktop face.js / facepaint / avatar |
+| 9 ✅ 2.0.0 Hand tracking | hand landmarks (2 hands) + smoothing / prediction; attach layers to hand points; neon hands + air drawing; gestures → commands (show / hide layer, next scene / slide, photo, start / stop video, effect); built-in poses + teach your own poses (kNN) + practice; hand-at-face zones (put on / take off) | port of desktop hands / handml / handtrain; no PC control on phone |
+| 10 ✅ 2.0.0 (part) Motion + extras | layer animation presets (pop, float, bounce, spin, pulse, shake, slide, typewriter) then keyframe timeline; slideshow areas; templates; lyrics of the song playing on the phone (opt-in); screen capture as a layer; front + back camera at once (supported phones); speed panel | |
+| 11 ✅ 2.0.0 (part) PC ⇄ phone | share projects / templates with Prism Cam on the PC; send the finished Prism picture (not only the raw camera) to the PC | native WebRTC |
+Still impossible / not useful on a phone: virtual camera, controlling the PC with hands, hotkeys / macros / open programs.
+
+Done in 2.0.0 (2026-11-24): all of 7–9; from 10: motion presets, keyframes, slideshow, templates, speed panel + light
+mode; from 11: project file to share between devices. Left for later (ideas.md): screen capture layer, both cameras at
+once, lyrics, finished picture live to the PC (needs native WebRTC), desktop-compatible project format, own-PNG
+characters, typewriter text.

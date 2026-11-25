@@ -71,6 +71,35 @@
 - MediaPipe models must be stored uncompressed (`androidResources.noCompress += tflite, task`).
 - APK was 85 MB with x86 / x86_64 AI libraries → `abiFilters arm64-v8a, armeabi-v7a` (43 MB).
 
+## Front camera (1.0.1)
+- PreviewView mirrors the front camera AFTER our GPU pipeline. Anything the user places or touches must be in screen
+  space; the overlay is flipped in the shader for the front camera, AI landmarks (camera space) are mirrored before they
+  reach the scene, the person mask stays in camera space. Video uses MIRROR_MODE_ON_FRONT_ONLY so it matches the screen.
+
+## Studio compositor (2.0.0)
+- Effects on at cold start (a saved scene) → the first bind happened with display rotation 0 → scene drawn turned 90°
+  on the landscape tablet. Set `cam.setDisplayRotation(display.rotation)` BEFORE `cam.start`.
+- With a CameraEffect, rotating the screen afterwards (PreviewView rotation changes, the processed buffer does not)
+  left the scene turned 90° even with `refreshGeometry`. Fix: rebind on display rotation while the effect is bound
+  (not while recording — orientation is locked then).
+- Kotlin `0f...5f` is NOT a range (it is a syntax error) — write `0f..0.5f`.
+- Layer textures are premultiplied (Android bitmaps); camera / video are not → `uPremul` per layer.
+- `GLES20.glVertexAttribPointer` with fixed locations: bind `aPos/aLocal/aTex/aSrc` to 0–3 before linking, for both
+  layer programs, so one vertex buffer works for both.
+- AI mask / blur / background textures are in camera space (row 0 = top); sample them with the camera-space varying
+  (`vSrc`), not the OES texture coordinates.
+- **Front camera = mirrored canvas.** An angle measured along a left-right line (eye to eye, across the hand) flips
+  180° through the mirror → stickers upside down. Measure along the UP direction (chin → forehead, wrist → fingers);
+  for a two-hand line always read it left → right on screen. Camera space is 0..1 on both axes but 4:3: multiply y by
+  `Tracking.aspect` before taking a length or an angle.
+- MediaPipe may list the two hands in either order frame to frame: smoothing per list index blends the hands. Match
+  each hand to its slot by the nearest palm (`Tracking.feedHands`).
+- No real face / hands in front of the tablet: use `fakeface:<tilt>/<s>` and `fakehands:<n>/<gap>/<tilt>/<gesture>/<s>`
+  (AI results are ignored meanwhile) and test BOTH cameras + a photo.
+- Test acts are sent through `adb shell`: `|` and `;` are eaten by the shell — use `/` inside an act value.
+- Test while the room is dark: the picture is black and only layers show — check the raw camera (`studioreset`) before
+  hunting a bug. The tablet also locks itself (keyguard) → the camera "cannot open from background".
+
 ## Look
 - Compose `Modifier.shadow` under a translucent (glass) pane shows through as a pale inner rectangle. Glass panes use
   `outsideShadow` (Paint shadow layer, clipped OUT of the shape); opaque classic panes keep `Modifier.shadow`.

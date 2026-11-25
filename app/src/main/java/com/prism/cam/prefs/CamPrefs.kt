@@ -28,6 +28,8 @@ object CamPrefs {
     /** landscape: shutter column on the left */
     var lefty by mutableStateOf(false); private set
     var cleanHintShown by mutableStateOf(false); private set
+    /** light mode for weak devices: smaller effect canvas, fewer AI frames */
+    var lite by mutableStateOf(false); private set
 
     fun init(context: Context) {
         app = context.applicationContext
@@ -38,6 +40,7 @@ object CamPrefs {
         smooth = p.getBoolean("cam.smooth", false)
         lefty = p.getBoolean("cam.lefty", false)
         cleanHintShown = p.getBoolean("cam.cleanHint", false)
+        lite = p.getBoolean("cam.lite", false)
     }
 
     private fun edit(block: android.content.SharedPreferences.Editor.() -> Unit) {
@@ -52,5 +55,6 @@ object CamPrefs {
     fun useAspect(a: Aspect) { aspect = a; edit { putString("cam.aspect", a.key) } }
     fun useSmooth(v: Boolean) { smooth = v; edit { putBoolean("cam.smooth", v) } }
     fun useLefty(v: Boolean) { lefty = v; edit { putBoolean("cam.lefty", v) } }
+    fun useLite(v: Boolean) { lite = v; edit { putBoolean("cam.lite", v) } }
     fun markCleanHint() { cleanHintShown = true; edit { putBoolean("cam.cleanHint", true) } }
 }

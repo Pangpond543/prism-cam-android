@@ -5,8 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.os.SystemClock
@@ -26,19 +24,20 @@ import com.google.mediapipe.tasks.vision.gesturerecognizer.GestureRecognizer
 import com.google.mediapipe.tasks.vision.imagesegmenter.ImageSegmenter
 import com.prism.cam.PrismLog
 import com.prism.cam.camera.PrismCamera
-import com.prism.cam.effects.Scene
 import com.prism.cam.i18n.T
+import com.prism.cam.studio.Tracking
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.Executors
 
 /**
- * On-device AI (MediaPipe, bundled models, no internet, no Google services):
+ * On-device AI (MediaPipe, bundled models, no internet, no Google services), like the desktop app's shared AI worker:
  * - person mask → background blur / replace (live on the GPU, and on photos);
- * - face landmarks → face stickers;
- * - hand gesture → peace sign ✌️ = photo with a 3 s countdown.
+ * - face landmarks + expressions (1–4 faces) → [Tracking] → layers attached to faces, face paint, characters, face gestures;
+ * - hand landmarks + gestures (2 hands) → [Tracking] → layers attached to hands, air drawing, hand gestures, ✌️ shutter.
  * Works on the small upright "analysis" copy of each frame the GPU pipeline reads back (~256 px, ~15 fps); only the
- * parts that are switched on run. Everything AI runs on one background thread.
+ * parts that are needed run. Everything AI runs on one background thread. Points stay in camera space (not mirrored);
+ * the compositor maps them onto the canvas.
  */
 class Vision(private val ctx: Context, private val cam: PrismCamera) {
     // ── what is on (UI state)
@@ -47,18 +46,37 @@ class Vision(private val ctx: Context, private val cam: PrismCamera) {
     var blur by mutableFloatStateOf(.75f); private set
     /** id of the replacement background (built-in gradient or "photo") */
     var bgId by mutableStateOf("prism"); private set
-    var faceSticker by mutableStateOf<String?>(null); private set
     var peace by mutableStateOf(false); private set
     /** "portrait" mode forces blur on while it is selected */
     var portrait by mutableStateOf(false); private set
     var status by mutableStateOf<String?>(null); private set
 
+    // ── tracking switches (Tracking panel) — the user's master switches; work only runs when something needs it
+    var faceOn by mutableStateOf(true); private set
+    var handsOn by mutableStateOf(true); private set
+    var maxFaces by mutableIntStateOf(1); private set
+    var gpu by mutableStateOf(true); private set
+    /** show the tracked points over the picture (tuning) */
+    var showMesh by mutableStateOf(false); private set
+    /** what the scene needs right now (set by the studio pump) */
+    private var faceNeeded = false
+    private var handNeeded = false
+    // ── live numbers (Tracking panel / speed panel)
+    var facesSeen by mutableIntStateOf(0); private set
+    var handsSeen by mutableIntStateOf(0); private set
+    var aiMs by mutableIntStateOf(0); private set
+    var faceGpu by mutableStateOf<Boolean?>(null); private set
+    var handGpu by mutableStateOf<Boolean?>(null); private set
+    /** gesture listeners (face / hand commands, air drawing): called on the AI thread after each tracked frame */
+    var onTracked: (() -> Unit)? = null
+
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "prism-ai").apply { priority = Thread.NORM_PRIORITY } }
     private var seg: ImageSegmenter? = null
     private var face: FaceLandmarker? = null
+    private var faceKey = ""
     private var gesture: GestureRecognizer? = null
+    private var gestureKey = ""
     private var segImage: ImageSegmenter? = null
-    private var faceImage: FaceLandmarker? = null
     private var bgPicture: Bitmap? = null
     private var peaceStreak = 0
     private var lastPeace = 0L
@@ -66,11 +84,12 @@ class Vision(private val ctx: Context, private val cam: PrismCamera) {
     private val main = ContextCompat.getMainExecutor(ctx)
 
     init {
-        cam.clearAi = { useBg(0); useFaceSticker(null); usePeace(false) }
-        cam.photoBackground = { photoBackgroundStep() }
+        cam.clearAi = { useBg(0); usePeace(false) }
     }
 
     private val effectiveBg get() = if (portrait) 1 else bg
+    val faceActive get() = faceOn && (faceNeeded || showMesh)
+    val handActive get() = handsOn && (handNeeded || peace || showMesh)
 
     // ───────────────────────────── switches ─────────────────────────────
 
@@ -84,9 +103,22 @@ class Vision(private val ctx: Context, private val cam: PrismCamera) {
         if (bg != 2) bg = 2
         apply()
     }
-    fun useFaceSticker(id: String?) { faceSticker = id; Scene.faceSticker = id; if (id == null) { Scene.faces = emptyList(); Scene.touch() }; apply() }
     fun usePeace(on: Boolean) { peace = on; peaceStreak = 0; apply() }
     fun usePortrait(on: Boolean) { portrait = on; apply() }
+    fun useFace(on: Boolean) { faceOn = on; if (!on) Tracking.faces = emptyList(); apply() }
+    fun useHands(on: Boolean) { handsOn = on; if (!on) run { Tracking.hands = emptyList(); Tracking.pair = "" }; apply() }
+    fun useMaxFaces(n: Int) { maxFaces = n.coerceIn(1, 4); apply() }
+    fun useGpu(on: Boolean) { gpu = on; apply() }
+    fun useMesh(on: Boolean) { showMesh = on; cam.fx.showMesh = on; apply() }
+
+    /** the studio tells us what its layers need */
+    fun need(face: Boolean, hand: Boolean) {
+        if (face == faceNeeded && hand == handNeeded) return
+        faceNeeded = face; handNeeded = hand
+        if (!face && !showMesh) Tracking.faces = emptyList()
+        if (!hand && !showMesh) run { Tracking.hands = emptyList(); Tracking.pair = "" }
+        apply()
+    }
 
     /** Turn the GPU analysis + effect pipeline on/off to match what is switched on. */
     private fun apply() {
@@ -95,7 +127,7 @@ class Vision(private val ctx: Context, private val cam: PrismCamera) {
         fx.blurAmount = blur
         if (effectiveBg == 2 && bgPicture == null) { bgPicture = builtInBackground(bgId); fx.setBackground(bgPicture) }
         if (effectiveBg == 0) fx.setMask(null, 0, 0)
-        val needFrames = effectiveBg != 0 || faceSticker != null || peace
+        val needFrames = effectiveBg != 0 || faceActive || handActive
         fx.analysisBusy = false
         fx.analysisListener = if (needFrames) ({ buf, w, h, _ -> onFrame(buf, w, h) }) else null
         cam.fxReason("ai", needFrames)
@@ -105,8 +137,10 @@ class Vision(private val ctx: Context, private val cam: PrismCamera) {
     private fun ensureModels() {
         try {
             if (effectiveBg != 0 && seg == null) seg = makeSegmenter(RunningMode.VIDEO)
-            if (faceSticker != null && face == null) face = makeFace(RunningMode.VIDEO)
-            if (peace && gesture == null) gesture = makeGesture()
+            val fk = "$maxFaces/$gpu"
+            if (faceActive && (face == null || faceKey != fk)) { face?.close(); face = null; face = makeFace(); faceKey = fk }
+            val gk = "$gpu"
+            if (handActive && (gesture == null || gestureKey != gk)) { gesture?.close(); gesture = null; gesture = makeGesture(); gestureKey = gk }
             main.execute { status = null }
         } catch (t: Throwable) {
             PrismLog.i("ERR ai init ${t.javaClass.simpleName} ${t.message}")
@@ -116,8 +150,11 @@ class Vision(private val ctx: Context, private val cam: PrismCamera) {
 
     private fun base(path: String, gpu: Boolean) = BaseOptions.builder().setModelAssetPath(path).setDelegate(if (gpu) Delegate.GPU else Delegate.CPU).build()
 
-    private fun <T> gpuThenCpu(make: (Boolean) -> T): T = try { make(true) } catch (t: Throwable) {
-        PrismLog.i("AI gpu delegate failed: ${t.stackTraceToString().take(1500)}"); make(false)
+    private fun <T> gpuThenCpu(want: Boolean, make: (Boolean) -> T): Pair<T, Boolean> {
+        if (!want) return make(false) to false
+        return try { make(true) to true } catch (t: Throwable) {
+            PrismLog.i("AI gpu delegate failed: ${t.stackTraceToString().take(1500)}"); make(false) to false
+        }
     }
 
     // CPU on purpose: with the GPU delegate MediaPipe 1.2 fails to read its own confidence mask
@@ -129,25 +166,42 @@ class Vision(private val ctx: Context, private val cam: PrismCamera) {
         ).also { PrismLog.i("AI segmenter ready gpu=$gpu mode=$mode") }
     }
 
-    private fun makeFace(mode: RunningMode) = gpuThenCpu { gpu ->
-        FaceLandmarker.createFromOptions(
-            ctx, FaceLandmarker.FaceLandmarkerOptions.builder().setBaseOptions(base("models/face_landmarker.task", gpu))
-                .setRunningMode(mode).setNumFaces(3).setMinFaceDetectionConfidence(.5f).setMinTrackingConfidence(.5f).build(),
-        ).also { PrismLog.i("AI face ready gpu=$gpu mode=$mode") }
+    private fun makeFace(): FaceLandmarker {
+        val (f, onGpu) = gpuThenCpu(gpu) { g ->
+            FaceLandmarker.createFromOptions(
+                ctx, FaceLandmarker.FaceLandmarkerOptions.builder().setBaseOptions(base("models/face_landmarker.task", g))
+                    .setRunningMode(RunningMode.VIDEO).setNumFaces(maxFaces).setOutputFaceBlendshapes(true)
+                    .setMinFaceDetectionConfidence(.5f).setMinFacePresenceConfidence(.5f).setMinTrackingConfidence(.5f).build(),
+            )
+        }
+        PrismLog.i("AI face ready gpu=$onGpu faces=$maxFaces")
+        main.execute { faceGpu = onGpu }
+        return f
     }
 
-    private fun makeGesture() = gpuThenCpu { gpu ->
-        GestureRecognizer.createFromOptions(
-            ctx, GestureRecognizer.GestureRecognizerOptions.builder().setBaseOptions(base("models/gesture_recognizer.task", gpu))
-                .setRunningMode(RunningMode.VIDEO).setNumHands(2).build(),
-        ).also { PrismLog.i("AI gesture ready gpu=$gpu") }
+    private fun makeGesture(): GestureRecognizer {
+        val (g, onGpu) = gpuThenCpu(gpu) { gp ->
+            GestureRecognizer.createFromOptions(
+                ctx, GestureRecognizer.GestureRecognizerOptions.builder().setBaseOptions(base("models/gesture_recognizer.task", gp))
+                    .setRunningMode(RunningMode.VIDEO).setNumHands(2).setMinHandDetectionConfidence(.5f).setMinTrackingConfidence(.5f).build(),
+            )
+        }
+        PrismLog.i("AI hands ready gpu=$onGpu")
+        main.execute { handGpu = onGpu }
+        return g
     }
 
     // ───────────────────────────── live frames ─────────────────────────────
 
-    private var timing = 0L
     private var frameBitmap: Bitmap? = null
     private var errors = 0
+    private var msSum = 0L
+    private var msN = 0
+    /** test hook: save the next picture the AI sees */
+    fun dumpFrame(f: java.io.File) = worker.execute {
+        frameBitmap?.let { b -> f.outputStream().use { b.compress(Bitmap.CompressFormat.PNG, 100, it) }; PrismLog.i("AIDUMP ${b.width}x${b.height} → ${f.name}") }
+    }
+
     private fun onFrame(buf: ByteBuffer, w: Int, h: Int) {
         worker.execute {
             val t0 = SystemClock.elapsedRealtime()
@@ -172,112 +226,87 @@ class Vision(private val ctx: Context, private val cam: PrismCamera) {
                         cam.fx.setMask(out, mw, mh)
                     }
                 }
-                if (faceSticker != null) face?.let { f ->
+                if (faceActive) face?.let { f ->
                     val r = f.detectForVideo(img, ts)
-                    val faces = r.faceLandmarks().map { lm -> FloatArray(lm.size * 2).also { a -> lm.forEachIndexed { i, p -> a[i * 2] = p.x(); a[i * 2 + 1] = p.y() } } }
-                    main.execute { Scene.faces = faces; Scene.touch() }
-                }
-                if (peace && frameNo % 2 == 0L) gesture?.let { g ->
-                    val r = g.recognizeForVideo(img, ts)
-                    val v = r.gestures().any { hand -> hand.firstOrNull()?.let { it.categoryName() == "Victory" && it.score() > .65f } == true }
-                    peaceStreak = if (v) peaceStreak + 1 else 0
-                    val now = SystemClock.elapsedRealtime()
-                    if (peaceStreak >= 3 && now - lastPeace > 4500) {
-                        lastPeace = now; peaceStreak = 0
-                        PrismLog.i("AI peace sign → photo")
-                        main.execute { cam.peaceShot() }
+                    val shapes = r.faceBlendshapes().orElse(null)
+                    val list = r.faceLandmarks().mapIndexed { i, lm ->
+                        val pts = FloatArray(lm.size * 2).also { a -> lm.forEachIndexed { k, p -> a[k * 2] = p.x(); a[k * 2 + 1] = p.y() } }
+                        val bs = shapes?.getOrNull(i)?.associate { it.categoryName() to it.score() } ?: emptyMap()
+                        pts to bs
                     }
-                }
+                    Tracking.feedFaces(list)
+                    if (list.size != facesSeen) main.execute { facesSeen = list.size }
+                } else if (Tracking.faces.isNotEmpty() && SystemClock.uptimeMillis() > Tracking.fakeFaceUntil) Tracking.faces = emptyList()
+                if (handActive) gesture?.let { g ->
+                    val r = g.recognizeForVideo(img, ts)
+                    val hands = r.landmarks().mapIndexed { i, lm ->
+                        val pts = FloatArray(lm.size * 2).also { a -> lm.forEachIndexed { k, p -> a[k * 2] = p.x(); a[k * 2 + 1] = p.y() } }
+                        // MediaPipe names hands as if the picture were mirrored; ours is not
+                        val label = r.handedness().getOrNull(i)?.firstOrNull()?.categoryName() ?: "Right"
+                        val top = r.gestures().getOrNull(i)?.firstOrNull()
+                        val score = top?.score() ?: 0f
+                        Tracking.Hand(pts, label == "Left", if (score > .55f) gestureId(top?.categoryName()) else "", score, 0L)
+                    }
+                    Tracking.feedHands(hands)
+                    if (hands.size != handsSeen) main.execute { handsSeen = hands.size }
+                    if (peace) {
+                        val v = hands.any { it.gesture == "peace" && it.score > .65f }
+                        peaceStreak = if (v) peaceStreak + 1 else 0
+                        val now = SystemClock.elapsedRealtime()
+                        if (peaceStreak >= 3 && now - lastPeace > 4500) {
+                            lastPeace = now; peaceStreak = 0
+                            PrismLog.i("AI peace sign → photo")
+                            main.execute { cam.peaceShot() }
+                        }
+                    }
+                } else if (Tracking.hands.isNotEmpty() && SystemClock.uptimeMillis() > Tracking.fakeUntil) run { Tracking.hands = emptyList(); Tracking.pair = "" }
+                onTracked?.invoke()
             } catch (t: Throwable) {
                 if (errors++ < 2) PrismLog.i("ERR ai frame ${t.stackTraceToString().take(1200)}")
             } finally {
                 cam.fx.analysisBusy = false
                 val dt = SystemClock.elapsedRealtime() - t0
-                if (frameNo % 60 == 1L) PrismLog.i("AI frame ${w}x$h in $dt ms (bg=$effectiveBg face=${faceSticker != null} peace=$peace)")
-                timing = dt
+                msSum += dt; msN++
+                if (msN >= 15) { val avg = (msSum / msN).toInt(); msSum = 0; msN = 0; main.execute { aiMs = avg } }
+                if (frameNo % 60 == 1L) PrismLog.i("AI frame ${w}x$h in $dt ms (bg=$effectiveBg face=$faceActive faces=${Tracking.faces.size} hands=$handActive n=${Tracking.hands.size})")
             }
         }
     }
 
     // ───────────────────────────── photos ─────────────────────────────
 
-    /** Background step for the full-resolution photo (runs on the camera io thread). */
-    private fun photoBackgroundStep(): ((Bitmap) -> Bitmap)? {
-        val mode = effectiveBg
-        if (mode == 0) return null
-        val strength = blur
-        val picture = bgPicture
-        return { photo -> composite(photo, mode, strength, picture) }
-    }
-
+    /** Person mask for a full-resolution still (camera space), for the GPU photo pass: bytes + [w, h]. Null = no AI background. */
     @Synchronized
-    private fun maskFor(photo: Bitmap): Bitmap? {
-        if (segImage == null) segImage = makeSegmenter(RunningMode.IMAGE)
-        val long = 512f
-        val k = long / maxOf(photo.width, photo.height)
-        val small = Bitmap.createScaledBitmap(photo, (photo.width * k).toInt().coerceAtLeast(1), (photo.height * k).toInt().coerceAtLeast(1), true)
-        val r = segImage!!.segment(BitmapImageBuilder(small).build())
-        small.recycle()
-        val m = r.confidenceMasks().orElse(null)?.lastOrNull() ?: return null
-        val fb = ByteBufferExtractor.extract(m).order(ByteOrder.nativeOrder()).asFloatBuffer()
-        val alpha = Bitmap.createBitmap(m.width, m.height, Bitmap.Config.ALPHA_8)
-        val bytes = ByteBuffer.allocate(m.width * m.height)
-        for (i in 0 until m.width * m.height) {
-            // soft edge like the shader: smoothstep(0.30, 0.70, p)
-            val p = ((fb.get(i) - .3f) / .4f).coerceIn(0f, 1f)
-            bytes.put((p * p * (3 - 2 * p) * 255f).toInt().toByte())
-        }
-        bytes.position(0)
-        alpha.copyPixelsFromBuffer(bytes)
-        return alpha
-    }
-
-    private fun composite(photo: Bitmap, mode: Int, strength: Float, picture: Bitmap?): Bitmap {
-        val mask = try { maskFor(photo) } catch (t: Throwable) { PrismLog.i("ERR photo mask ${t.message}"); null } ?: return photo
-        val w = photo.width; val h = photo.height
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val c = Canvas(out)
-        // 1) background
-        if (mode == 1) {
-            val k = (24 - 16 * strength).coerceIn(6f, 24f)  // stronger = smaller copy = softer
-            val sw = (w / k).toInt().coerceAtLeast(8); val sh = (h / k).toInt().coerceAtLeast(8)
-            val small = Bitmap.createScaledBitmap(photo, sw, sh, true)
-            boxBlur(small, 2 + (strength * 3).toInt())
-            c.drawBitmap(Bitmap.createScaledBitmap(small, w, h, true), 0f, 0f, null)
+    fun photoMask(photo: Bitmap): Pair<ByteBuffer, IntArray>? {
+        if (effectiveBg == 0) return null
+        return try {
+            if (segImage == null) segImage = makeSegmenter(RunningMode.IMAGE)
+            val k = 512f / maxOf(photo.width, photo.height)
+            val small = Bitmap.createScaledBitmap(photo, (photo.width * k).toInt().coerceAtLeast(1), (photo.height * k).toInt().coerceAtLeast(1), true)
+            val r = segImage!!.segment(BitmapImageBuilder(small).build())
             small.recycle()
-        } else if (picture != null) {
-            drawCover(c, picture, w, h)
-        }
-        // 2) person on top, cut out with the mask
-        val person = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val pc = Canvas(person)
-        pc.drawBitmap(photo, 0f, 0f, null)
-        pc.drawBitmap(Bitmap.createScaledBitmap(mask, w, h, true), 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) })
-        c.drawBitmap(person, 0f, 0f, null)
-        person.recycle(); mask.recycle(); photo.recycle()
-        return out
-    }
-
-    /** Face stickers for a photo: detect faces on the (U-space) photo, then draw. */
-    fun photoFaces(photo: Bitmap): List<FloatArray> = synchronized(this) {
-        if (faceSticker == null) return emptyList()
-        try {
-            if (faceImage == null) faceImage = makeFace(RunningMode.IMAGE)
-            val k = 768f / maxOf(photo.width, photo.height)
-            val small = Bitmap.createScaledBitmap(photo, (photo.width * k).toInt(), (photo.height * k).toInt(), true)
-            val r = faceImage!!.detect(BitmapImageBuilder(small).build())
-            small.recycle()
-            r.faceLandmarks().map { lm -> FloatArray(lm.size * 2).also { a -> lm.forEachIndexed { i, p -> a[i * 2] = p.x(); a[i * 2 + 1] = p.y() } } }
-        } catch (t: Throwable) { PrismLog.i("ERR photo faces ${t.message}"); emptyList() }
+            val m = r.confidenceMasks().orElse(null)?.lastOrNull() ?: return null
+            val fb = ByteBufferExtractor.extract(m).order(ByteOrder.nativeOrder()).asFloatBuffer()
+            val bytes = ByteBuffer.allocateDirect(m.width * m.height)
+            for (i in 0 until m.width * m.height) bytes.put((fb.get(i).coerceIn(0f, 1f) * 255f).toInt().toByte())
+            bytes.position(0)
+            bytes to intArrayOf(m.width, m.height)
+        } catch (t: Throwable) { PrismLog.i("ERR photo mask ${t.message}"); null }
     }
 
     fun release() {
-        worker.execute { seg?.close(); face?.close(); gesture?.close(); segImage?.close(); faceImage?.close() }
+        worker.execute { seg?.close(); face?.close(); gesture?.close(); segImage?.close() }
         worker.shutdown()
     }
 
     companion object {
         val backgrounds = listOf("prism", "night", "sunset", "mint", "studio")
+        /** MediaPipe gesture names → ours */
+        fun gestureId(name: String?) = when (name) {
+            "Closed_Fist" -> "fist"; "Open_Palm" -> "open"; "Pointing_Up" -> "point"; "Thumb_Down" -> "thumbDown"
+            "Thumb_Up" -> "thumbUp"; "Victory" -> "peace"; "ILoveYou" -> "love"; else -> ""
+        }
+        val gestures = listOf("open", "fist", "point", "peace", "thumbUp", "thumbDown", "love")
 
         fun builtInBackground(id: String, w: Int = 1280, h: Int = 960): Bitmap {
             val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -295,41 +324,6 @@ class Vision(private val ctx: Context, private val cam: PrismCamera) {
                 shader = RadialGradient(w * .3f, h * .25f, maxOf(w, h) * .6f, intArrayOf(0x55FFFFFF, 0x00FFFFFF), null, Shader.TileMode.CLAMP)
             })
             return b
-        }
-
-        fun drawCover(c: Canvas, pic: Bitmap, w: Int, h: Int) {
-            val k = maxOf(w.toFloat() / pic.width, h.toFloat() / pic.height)
-            val dw = pic.width * k; val dh = pic.height * k
-            c.drawBitmap(pic, null, android.graphics.RectF((w - dw) / 2, (h - dh) / 2, (w + dw) / 2, (h + dh) / 2), Paint(Paint.FILTER_BITMAP_FLAG))
-        }
-
-        /** In-place separable box blur, 3 passes (≈ gaussian). Small bitmaps only. */
-        fun boxBlur(b: Bitmap, r: Int) {
-            val w = b.width; val h = b.height
-            val px = IntArray(w * h); b.getPixels(px, 0, w, 0, 0, w, h)
-            val tmp = IntArray(w * h)
-            repeat(3) {
-                blurPass(px, tmp, w, h, r, true)
-                blurPass(tmp, px, w, h, r, false)
-            }
-            b.setPixels(px, 0, w, 0, 0, w, h)
-        }
-
-        private fun blurPass(src: IntArray, dst: IntArray, w: Int, h: Int, r: Int, horizontal: Boolean) {
-            val n = if (horizontal) w else h
-            val lines = if (horizontal) h else w
-            val div = 2 * r + 1
-            for (l in 0 until lines) {
-                var sa = 0; var sr = 0; var sg = 0; var sb = 0
-                fun idx(i: Int): Int { val k = i.coerceIn(0, n - 1); return if (horizontal) l * w + k else k * w + l }
-                for (i in -r..r) { val p = src[idx(i)]; sa += p ushr 24; sr += (p shr 16) and 255; sg += (p shr 8) and 255; sb += p and 255 }
-                for (i in 0 until n) {
-                    dst[idx(i)] = ((sa / div) shl 24) or ((sr / div) shl 16) or ((sg / div) shl 8) or (sb / div)
-                    val pOut = src[idx(i - r)]; val pIn = src[idx(i + r + 1)]
-                    sa += (pIn ushr 24) - (pOut ushr 24); sr += ((pIn shr 16) and 255) - ((pOut shr 16) and 255)
-                    sg += ((pIn shr 8) and 255) - ((pOut shr 8) and 255); sb += (pIn and 255) - (pOut and 255)
-                }
-            }
         }
     }
 }

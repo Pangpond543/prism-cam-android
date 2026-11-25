@@ -22,8 +22,8 @@ android {
         applicationId = "com.prism.cam"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.0.0"
+        versionCode = 20
+        versionName = "2.0.0"
         // phones and tablets only (the x86 builds of the AI library alone were ~43 MB)
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }

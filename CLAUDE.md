@@ -53,3 +53,22 @@ The in-app updater reads `releases/latest` and the first `.apk` asset. Always si
   Light/Dark, Glass/Classic, Info + GitHub updater) must match the suite. No title bar on mobile: it lives in the "…" menu.
 - Default look = Classic. Glass is opt-in.
 - Camera frames stay on the GPU. Nothing heavy on the main thread. Measure on the real phone (docs/plan.md targets).
+- Studio (2.0.0): everything on the picture is a layer (`studio/Model.kt`); the GPU compositor (`effects/GlFx.kt`) draws
+  them from immutable snapshots (`studio/Pump.kt`). Never touch Compose state from the GL / AI threads except by posting.
+  Read docs/architecture.md "Studio compositor" + pitfalls "Studio compositor" before changing it.
+
+## Test hook (`--es act "a,b:c"` → `bash tools/camtest.sh <name> "<acts>" [wait] [outdir]`, cold start each time)
+Look / camera: `dark light glass classic th en photo video:<s> mode:<photo|video> front back zoom:<x> snap rec stop
+orient:<portrait|landscape> clean unclean timer:<s> grid:<0|1> aspect:<4:3|16:9|1:1> hold:<ms> vframe`.
+Studio: `studioreset text:<t> sticker:<e> shape:<s> frame:<id> layout:<fill|fit|pip|half|circle|tilt> template:<id>
+layers[:0] props[:0] sel:<i> set:<w|x|y|rot|opacity|radius|border|shadow|bright|sat|hue|key|circle>=<n> anim:<id>
+keydemo undo redo scene:<add|i> autoplay:<s> addmedia:<file in app files dir> share studiolog`.
+Face / hands: `face:<pack|none> facepaint:<id|none> avatar:<cat|bot|ghost|none> facefx:<mesh|eyes|none>
+handfx:<neon|trail|draw|none> attach:<face|hand>.<point> track:<face0|face1|hands0|hands1|mesh0|mesh1|1|0>
+cmd:<trigger>=<action> cmdclear tracklog bg:<blur|replace|none> peace:<0|1> portrait`.
+Two hands: `two:<heart|pray|banner|rainbow>` · `handfx:<lightning|ball|orb|…>` (toggles, several at once) ·
+`attach:hands2.<point>` · `fakehands:<n>/<gap>/<tilt>/<gesture|pair:heart>/<s>` · `fakeface:<tilt>/<s>` (synthetic
+tracking, real AI ignored meanwhile) · `facepts` · `aidump` (AI input → files/ai.png) · `fxtab:<i>` · `propstab:<i>`.
+**User data:** any act that changes scenes first keeps the user's scenes (`files/studio/before-test.json`); finish a
+test session with `studiorestore` so the user gets their own scenes back.
+`en` / `dark` persist — finish with `th,light`. Room may be dark: check the raw camera with `studioreset` first.

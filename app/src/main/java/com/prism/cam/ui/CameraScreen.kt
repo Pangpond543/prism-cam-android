@@ -31,7 +31,10 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.ui.input.pointer.positionChange
-import com.prism.cam.effects.Scene
+import com.prism.cam.studio.Layer
+import com.prism.cam.studio.LType
+import com.prism.cam.studio.Make
+import com.prism.cam.studio.Studio
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -134,7 +137,11 @@ fun CameraScreen(
     /** ✦ sheet */
     onFx: () -> Unit = {},
     /** tap on an already-selected text = edit it */
-    onEditText: (Scene.Text) -> Unit = {},
+    onEditText: (Layer) -> Unit = {},
+    /** layers panel */
+    onLayers: () -> Unit = {},
+    /** settings of one layer (⚙ on the selection box) */
+    onLayerProps: (Layer) -> Unit = {},
     /** orientation when not recording (test hook `orient:` can force one; normally follows the device) */
     freeOrientation: Int = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED,
     /** test hook: >0 = enter clean screen, <0 = leave (a new value each time) */
@@ -298,7 +305,6 @@ fun CameraScreen(
             if (CamPrefs.grid) GridOverlay(tilt)
             FreezeOverlay(cam.freeze)
             BlinkOverlay(cam.shots)
-            SceneLink(cam, bw / bh)
             FocusLayer(cam, rot, onEditText = onEditText, onDoubleTap = {
                 if (cam.hasFront) { haptic(HapticFeedbackConstants.VIRTUAL_KEY); cam.switchLens() }
             }, onSwipe = { dir ->
@@ -309,7 +315,8 @@ fun CameraScreen(
                     changeMode(order[i])
                 }
             })
-            if (!clean) SelectionBox(bw, bh)
+            if (!clean) SelectionBox(cam.fx, bw, bh, onLayerProps)
+            if (!clean) Studio.selected()?.takeIf { it.type == LType.Drawing }?.let { d -> DrawingBar(d) { onLayerProps(d) } }
             Countdown(cam.countdown, rot)
         }
         // The SurfaceView inside PreviewView is NOT clipped to its box when the picture is cropped (1:1 shows the
@@ -348,7 +355,8 @@ fun CameraScreen(
                 haptic(HapticFeedbackConstants.CLOCK_TICK); CamPrefs.cycleAspect(); cam.applyShape()
             }
             if (cam.mode == Mode.Video && !cam.audioOk) TopIcon("micoff", s, rot, Color(0xCCFFFFFF)) { onVideoMode() }
-            TopIcon("sparkle", s, rot, if (cam.look.id != "none" || !Scene.isEmpty || cam.fxReasons.isNotEmpty()) Color(0xFFFFD98A) else Color.White) { onFx() }
+            TopIcon("sparkle", s, rot, if (cam.look.id != "none" || !Make.isEmpty() || cam.fxReasons.isNotEmpty()) Color(0xFFFFD98A) else Color.White) { onFx() }
+            TopIcon("layers", s, rot, if (Studio.layers.size > 1) Color(0xFF86E8D6) else Color.White) { onLayers() }
             TopIcon("eyeoff", s, rot) { enterClean() }
             Box {
                 TopIcon("dots", s, rot) { onMenu() }
@@ -752,7 +760,7 @@ private class Ring(val pos: Offset, val id: Int)
  * pinch = zoom (tick at 1× and 2×), swipe left / right = change mode, double tap = flip camera.
  */
 @Composable
-private fun FocusLayer(cam: PrismCamera, rot: Float, onEditText: (Scene.Text) -> Unit, onDoubleTap: () -> Unit, onSwipe: (Int) -> Unit) {
+private fun FocusLayer(cam: PrismCamera, rot: Float, onEditText: (Layer) -> Unit, onDoubleTap: () -> Unit, onSwipe: (Int) -> Unit) {
     val editCb by androidx.compose.runtime.rememberUpdatedState(onEditText)
     val swipeCb by androidx.compose.runtime.rememberUpdatedState(onSwipe)
     val doubleCb by androidx.compose.runtime.rememberUpdatedState(onDoubleTap)
@@ -782,36 +790,77 @@ private fun FocusLayer(cam: PrismCamera, rot: Float, onEditText: (Scene.Text) ->
                 var last = start
                 var moved = Offset.Zero
                 val nearRing = ring?.let { (it.pos - start).getDistance() < ringReach } == true
-                // ── text / sticker under the finger: move it (1 finger) or scale + turn it (2 fingers)
-                val hitItem = Scene.hit(start.x / size.width, start.y / size.height, size.width.toFloat() / size.height)
-                if (hitItem != null) {
-                    val wasSelected = Scene.selected == hitItem.id
-                    Scene.selected = hitItem.id
+                // ── a layer under the finger: move it (1 finger) or scale + turn it (2 fingers); attached layers move
+                // their offset from the face / hand, and pinch changes their size relative to it
+                // ── finger drawing on the selected drawing layer (two fingers = cancel the line)
+                val drawL = Studio.selected()?.takeIf { it.type == LType.Drawing && !it.locked && it.visible }
+                if (drawL != null) {
+                    val pts = arrayListOf(start.x / size.width, start.y / size.height)
+                    fun line() = com.prism.cam.studio.Stroke(pts.toFloatArray(), Make.penColor, Make.penWidth, Make.penGlow)
+                    drawL.strokes.add(line())
+                    var multi = false
+                    var lastP = start
+                    do {
+                        val ev = awaitPointerEvent()
+                        val pressed = ev.changes.filter { it.pressed }
+                        if (pressed.size >= 2) multi = true
+                        else if (pressed.size == 1 && !multi) {
+                            val p = pressed[0].position
+                            if ((p - lastP).getDistance() > 2.5f) {
+                                lastP = p; pts += p.x / size.width; pts += p.y / size.height
+                                drawL.strokes[drawL.strokes.size - 1] = line()
+                                drawL.touchContent()
+                            }
+                        }
+                        ev.changes.forEach { it.consume() }
+                    } while (ev.changes.any { it.pressed })
+                    if (multi) drawL.strokes.removeAt(drawL.strokes.size - 1)
+                    drawL.touchContent(); Studio.commit("draw")
+                    return@awaitEachGesture
+                }
+                val hit = hitLayer(start.x, start.y, size.width.toFloat(), size.height.toFloat(), cam.fx, 14.dp.toPx())
+                if (hit != null) {
+                    val wasSelected = Studio.selection.firstOrNull() == hit.id
+                    Studio.select(hit.id)
                     var movedAny = false
+                    val bwPx = size.width.toFloat(); val bhPx = size.height.toFloat()
+                    fun moveBy(dx: Float, dy: Float) {
+                        if (hit.attach.kind.isNotEmpty()) {
+                            val q = layerQuad(hit, cam.fx, bwPx, bhPx) ?: return
+                            val faceW = (q.w / hit.attach.size.coerceAtLeast(.05f)).coerceAtLeast(8f)
+                            val ang = Math.toRadians((if (hit.attach.followRot) q.rot - hit.rot else 0f).toDouble())
+                            val c = kotlin.math.cos(ang).toFloat(); val sn = kotlin.math.sin(ang).toFloat()
+                            hit.attach.ox += (dx * c + dy * sn) / faceW
+                            hit.attach.oy += (-dx * sn + dy * c) / faceW
+                        } else {
+                            hit.x = (hit.x + dx / bwPx).coerceIn(-.2f, 1.2f)
+                            hit.y = (hit.y + dy / bhPx).coerceIn(-.2f, 1.2f)
+                        }
+                    }
                     do {
                         val ev = awaitPointerEvent()
                         val pressed = ev.changes.filter { it.pressed }
                         if (pressed.size >= 2) {
                             val z = ev.calculateZoom(); val r = ev.calculateRotation(); val pan = ev.calculatePan()
-                            hitItem.scale = (hitItem.scale * z).coerceIn(.25f, 8f)
-                            hitItem.rot += r
-                            hitItem.x = (hitItem.x + pan.x / size.width).coerceIn(0f, 1f)
-                            hitItem.y = (hitItem.y + pan.y / size.height).coerceIn(0f, 1f)
+                            if (hit.attach.kind.isNotEmpty() && hit.attach.followScale) hit.attach.size = (hit.attach.size * z).coerceIn(.05f, 6f)
+                            else hit.w = (hit.w * z).coerceIn(.03f, 3f)
+                            hit.rot += r
+                            moveBy(pan.x, pan.y)
                             movedAny = true
-                            Scene.touch()
+                            Studio.touch()
                         } else if (pressed.size == 1) {
                             val ch = pressed[0]
                             if ((ch.position - start).getDistance() > slop) movedAny = true
                             if (movedAny) {
                                 val d = ch.positionChange()
-                                hitItem.x = (hitItem.x + d.x / size.width).coerceIn(0f, 1f)
-                                hitItem.y = (hitItem.y + d.y / size.height).coerceIn(0f, 1f)
-                                Scene.touch()
+                                moveBy(d.x, d.y)
+                                Studio.touch()
                             }
                         }
                         ev.changes.forEach { it.consume() }
                     } while (ev.changes.any { it.pressed })
-                    if (!movedAny && wasSelected && hitItem is Scene.Text) editCb(hitItem)
+                    if (movedAny) { hit.rot = snapAngle(hit.rot); Studio.commit("move") }
+                    else if (wasSelected && hit.type == LType.Text) editCb(hit)
                     return@awaitEachGesture
                 }
                 do {
@@ -859,7 +908,7 @@ private fun FocusLayer(cam: PrismCamera, rot: Float, onEditText: (Scene.Text) ->
                         doubleCb()
                     } else {
                         lastTap = now to start
-                        if (Scene.selected != null) Scene.selected = null
+                        if (Studio.selection.isNotEmpty()) Studio.selection.clear()
                         cam.focusAt(start.x, start.y)
                         ring = Ring(start, (ring?.id ?: 0) + 1)
                         lastTouch = now

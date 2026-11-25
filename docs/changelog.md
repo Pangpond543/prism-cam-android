@@ -57,3 +57,56 @@
   retry; MediaPipe broken by R8 (protobuf + Flogger renamed, tasks-core not pulled) → keep rules + explicit
   dependency; segmenter GPU delegate fails to read its own mask → CPU (20 ms at 256 px); separable blur streaked →
   Kawase blur.
+- 2026-11-24 — **1.0.1: front-camera mirror fix** — user: with the front camera, dragging a sticker / text left moved it
+  right (and the other way). The screen shows the front camera mirrored but the overlay was made unmirrored. Now the
+  scene lives in screen space: the GPU flips the overlay for the front camera (`GlFx.mirrorOverlay`), face landmarks
+  are mirrored into screen space, and front-camera video is saved mirrored like the screen and the photos
+  (`MIRROR_MODE_ON_FRONT_ONLY`). Checked on the tablet: drag left = left, text readable on screen, in the photo and in
+  the video (17 Mbps).
+- 2026-11-24 — **2.0.0: the studio (desktop parity, phases 7–11)** — user: "PC features are missing (face tuning, hand
+  tuning, layers) … add files, stick them to hands and faces like the PC", then "do every phase".
+  **7 Layer engine:** `effects/GlFx.kt` rewritten as a GPU compositor — every layer of the scene drawn each frame into
+  one canvas (camera, pictures, GIFs, videos, text, stickers, shapes, frames, finger drawings, face paint, VTuber
+  characters, face / hand effects) with crop, flip, rounded / circle mask, border, soft shadow, colour look + brightness
+  / contrast / saturation / hue, green screen, opacity, blend (normal / lighten / glow / darken). The camera is a layer
+  (layouts: fill, fit, corner PiP, half, circle, tilted). Studio document (`studio/Model.kt`): scenes, layers, undo /
+  redo (60 steps), auto-save + .bak. Layers panel (scenes, templates, add, camera layout, list with show / lock /
+  order / settings, files in the app) and per-layer settings panel (position, colour, face / hand, motion, content).
+  Selection box with ✕ / ⚙ / corner resize-turn handle (snaps to 0 / 90 / 180°). Add pictures / GIFs / videos (up to
+  10 at once, copied into the app). Photos: the GPU draws the whole scene again on the full-resolution still
+  (3264×2448 on the tablet, ~1.1 s). Plain full-screen camera with nothing on it still runs the zero-cost path.
+  **8 Face:** Tracking tab (face / hands on-off, 1–4 faces, GPU / CPU, steadiness, lag compensation, expression
+  sensitivity, swap eyes, show tracked points, "fit to my face" 3 s), any layer sticks to 13 face points (follow
+  turn / size / head turn, offset, which face, hide / stay / fade when lost, show only while smiling etc.), face
+  stickers are now real layers, face paint wrapped on the face mesh (10 paints, from the desktop), VTuber characters
+  (cat, robot, ghost) that copy head turn / blink / mouth / smile / brows / gaze and idle by themselves, glowing face
+  lines / eyes. **9 Hands:** layers stick to 7 hand points, neon hands, fingertip light trail, air drawing (point =
+  draw, open hand = pause, fist 1 s = clear), commands from faces, hand gestures, hand-at-face zones and your own
+  recorded poses (kNN) → photo / video / next scene / next filter / clear drawing / hide top layer.
+  **10:** motion presets (12) + keyframes (remember spots on a timeline, played in a loop), scene slideshow (3 / 5 /
+  10 s), 6 templates (Vlog, Live, Cute, Podcast, VTuber, Party), speed panel + light mode in "…".
+  **11:** share the whole project (scenes + media) as one `.prismcam` file and open it on another device.
+  Found and fixed on the tablet: a saved scene turned effects on at cold start before the screen rotation was known →
+  scene drawn turned 90° (display rotation now set before the first bind); with an effect, CameraX fixes the processed
+  preview's rotation at bind time → rotating the screen left the scene turned → rebind on rotation while effects are on.
+  Not done (see ideas.md): screen capture as a layer, front + back camera at once, lyrics, sending the finished
+  picture (not only the raw camera) live to the PC; projects are not the same format as the desktop app's.
+- 2026-11-25 — **2.0.0 (before release): two hands + upside-down fix** — user: "attaching things between two hands
+  doesn't exist yet | switching front / back camera turns the picture upside down".
+  - **Fix: stickers stuck on a face or hand turned upside down** (the user's own photo showed pictures on the face upside
+    down). The angle came from the eye-to-eye line mapped onto the screen; the front camera mirrors the picture, so that
+    line pointed backwards → +180°. Now measured along the face's / hand's UP direction, which a mirror keeps — checked
+    with a fake tilted face on both cameras, on screen and in the photo. Camera space is 4:3, so distances use
+    y × aspect (`Tracking.aspect`, set by the GPU) — the old width / roll were slightly off when the head tilted.
+  - **Between two hands** (new attach mode "ระหว่างสองมือ"): middle of the two hands' points (palm / fingertips / wrist),
+    turns with the line between the hands (always read left → right, never upside down), stretches with the gap
+    (size × gap) or keeps its own size; offsets; show only while 🫶 / 🙏 / both hands make a gesture.
+  - **Two-hand poses** 🫶 heart hands and 🙏 praying hands (desktop hands.js rules, held 3 frames) — usable as commands
+    and as "show only while".
+  - **Hands tab → Two hands**: ⚡ lightning between the index tips, 🔮 energy ball between the palms, 💖 heart that
+    appears with heart hands, ✨ sparkle when praying, 🎀 text sign, 🌈 rainbow (ready-made layers, editable).
+  - **Energy orb in the palm** (open hand = orb, fist = burst into sparks). Hand effects now mix (several at once).
+  - Hands keep their own smoothing slot (the AI can list the two hands in either order — one hand was blended into
+    the other).
+  - Test hooks: `fakehands`, `fakeface`, `two`, `aidump`, `facepts`, `fxtab`, `propstab`, `studiorestore`; any test
+    act that changes scenes keeps the user's scenes first (`files/studio/before-test.json`).

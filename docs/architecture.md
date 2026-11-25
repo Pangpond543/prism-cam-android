@@ -27,6 +27,18 @@
 - `app/src/main/res/font/` — IBM Plex Sans Thai 400/500/600/700 (OFL, `licenses/`).
 - `tools/` — `env.sh`, `build.sh`, `i18n-audit.sh`, `icons-to-kotlin.mjs`.
 
+## Studio compositor (2.0.0)
+- `studio/Model.kt` (Compose-state document + `RLayer` immutable snapshot) → `studio/Pump.kt` (snapshots to the GL
+  thread on every change, renders content bitmaps off the main thread, GIF / character frames, tells `Vision` which
+  trackers are needed, tells `PrismCamera` whether the GPU pipeline is needed at all).
+- `effects/GlFx.kt` on "prism-gl": camera OES → canvas FBO (canvas = upright output size, ≤ 1920) → each layer as a
+  textured quad (2D or OES program, SDF mask / border, shadow pass, colour matrix, chroma key, blend) → output pass
+  per CameraX output (preview, encoder) mapping buffer → canvas (mirrored for the front camera; PreviewView mirrors it
+  back). Face paint = mesh draw (468 points, canonical UVs from `assets/face_mesh.txt`, back-facing triangles skipped).
+  Hand / face glow = capsule program. Photo pass = same compose with the still as the camera texture.
+- Spaces: camera space (upright, unmirrored, 0..1) for the AI and tracking; canvas px (x right, y down) for layers;
+  `Geometry.camToCanvas` maps one to the other through the camera layer (place, crop, flip, front mirror).
+
 ## Camera + effect pipeline
 CameraX (Preview / VideoCapture → `PrismEffect` SurfaceProcessor, only while effects are on) → OES texture → GL thread: effects + overlays + small blurred copy
 (for glass controls) → screen surface + MediaCodec input surface (recording) at the same time. ImageCapture in

@@ -65,7 +65,7 @@ import com.prism.cam.ui.theme.PrismThemeAccess
  * in landscape. Picks apply at once; Back / tap outside closes.
  */
 @Composable
-fun MenuSheet(open: Boolean, onClose: () -> Unit, onCameraChange: () -> Unit = {}, onSendToPc: () -> Unit = {}) {
+fun MenuSheet(open: Boolean, onClose: () -> Unit, onCameraChange: () -> Unit = {}, onSendToPc: () -> Unit = {}, speed: (@Composable () -> Unit)? = null) {
     BackHandler(open) { onClose() }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val land = maxWidth > maxHeight
@@ -125,6 +125,7 @@ fun MenuSheet(open: Boolean, onClose: () -> Unit, onCameraChange: () -> Unit = {
                     { CamPrefs.useSmooth(it); onCameraChange() }, icon = "bolt",
                 )
                 PrismSwitchRow(T("ถนัดซ้าย"), T("ตอนถือแนวนอน ย้ายปุ่มถ่ายไปไว้ทางซ้าย"), CamPrefs.lefty, { CamPrefs.useLefty(it) }, icon = "hand")
+                speed?.let { Label(T("ความเร็ว")); it() }
 
                 Spacer(Modifier.size(2.dp))
                 // Info box (suite "About")

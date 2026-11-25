@@ -2,4 +2,6 @@
 <paths>
     <!-- downloaded update APKs (Updater) -->
     <external-files-path name="updates" path="updates/" />
+    <!-- exported studio projects (share sheet) -->
+    <external-files-path name="share" path="share/" />
 </paths>

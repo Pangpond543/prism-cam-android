@@ -65,7 +65,8 @@ import androidx.compose.ui.unit.sp
 import com.prism.cam.camera.PrismCamera
 import com.prism.cam.effects.Look
 import com.prism.cam.effects.Looks
-import com.prism.cam.effects.Scene
+import com.prism.cam.studio.Content
+import com.prism.cam.studio.Make
 import com.prism.cam.i18n.T
 import com.prism.cam.ui.kit.PillKind
 import com.prism.cam.ui.kit.PrismChip
@@ -106,8 +107,9 @@ fun FxSheet(
         ) {
             val c = PrismThemeAccess.colors
             val tabs = listOf(T("ฟิลเตอร์") to "wand", T("ข้อความ") to "text", T("สติกเกอร์") to "sticker", T("กรอบ") to "frame") +
-                extraTabs.map { it.first to (if (it.first == T("พื้นหลัง")) "image" else "face") }
+                extraTabs.map { it.first to when (it.first) { T("พื้นหลัง") -> "image"; T("มือ") -> "hand"; T("ตั้งค่าการจับ") -> "sliders"; else -> "face" } }
             var tab by rememberSaveable { mutableIntStateOf(0) }
+            androidx.compose.runtime.LaunchedEffect(TestTabs.fx) { if (TestTabs.fx >= 0) { tab = TestTabs.fx; TestTabs.fx = -1 } }
             val shape = if (land) RoundedCornerShape(28.dp) else RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
             Column(
                 Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
@@ -135,12 +137,14 @@ fun FxSheet(
                         1 -> {
                             PrismPill(T("เพิ่มข้อความ"), onNewText, kind = PillKind.Primary, icon = "plus")
                             PrismText(T("แตะข้อความบนภาพเพื่อเลือก · ลากเพื่อย้าย · สองนิ้วเพื่อย่อ/ขยาย/หมุน · แตะซ้ำเพื่อแก้"), style = PrismThemeAccess.type.caption, color = c.ink3)
+                            PrismText(T("รูปทรง"), style = PrismThemeAccess.type.caption, color = c.ink3)
+                            ShapeRow()
                         }
                         2 -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            for (e in Scene.stickers) {
+                            for (e in Content.stickers) {
                                 Box(
                                     Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(c.hover)
-                                        .clickable(remember { MutableInteractionSource() }, indication = null) { haptic(android.view.HapticFeedbackConstants.CLOCK_TICK); Scene.addSticker(e) },
+                                        .clickable(remember { MutableInteractionSource() }, indication = null) { haptic(android.view.HapticFeedbackConstants.CLOCK_TICK); Make.sticker(e) },
                                     contentAlignment = Alignment.Center,
                                 ) { PrismText(e, style = TextStyle(fontSize = 28.sp)) }
                             }
@@ -148,9 +152,9 @@ fun FxSheet(
                         3 -> FrameRow()
                         else -> extraTabs.getOrNull(tab - 4)?.second?.invoke()
                     }
-                    if (!Scene.isEmpty || cam.look.id != "none") {
+                    if (!Make.isEmpty() || cam.look.id != "none") {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            PrismPill(T("ล้างทั้งหมด"), { Scene.clear(); cam.useLook(Looks.all[0]); cam.clearAiLooks() }, kind = PillKind.Warn, icon = "trash")
+                            PrismPill(T("ล้างทั้งหมด"), { Make.clearAll(); cam.useLook(Looks.all[0]); cam.clearAiLooks() }, kind = PillKind.Warn, icon = "trash")
                         }
                     }
                 }
@@ -202,9 +206,28 @@ private fun FrameRow() {
     val haptic = rememberHaptic()
     val names = mapOf(
         "none" to T("ไม่มีกรอบ"), "white" to T("โพลารอยด์"), "round" to T("มุมมน"), "film" to T("ฟิล์ม"),
-        "prism" to "Prism", "date" to T("วันที่"), "cinema" to T("จอหนัง"),
+        "prism" to "Prism", "date" to T("วันที่"), "cinema" to T("จอหนัง"), "neon" to T("นีออน"),
     )
+    val on = Make.frameId()
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (f in Scene.frames) PrismChip(names[f] ?: f, Scene.frame == f, { haptic(android.view.HapticFeedbackConstants.CLOCK_TICK); Scene.frame = f; Scene.touch() })
+        for (f in listOf("none") + Content.frames) PrismChip(names[f] ?: f, on == f, { haptic(android.view.HapticFeedbackConstants.CLOCK_TICK); Make.frame(f) })
+    }
+}
+
+/** Shapes to add (rounded box, circle, star, heart, arrow, speech bubble) with the Prism gradient. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ShapeRow() {
+    val haptic = rememberHaptic()
+    val icons = mapOf("round" to "▢", "rect" to "■", "circle" to "●", "star" to "★", "heart" to "♥", "arrow" to "➜", "bubble" to "💬")
+    val c = PrismThemeAccess.colors
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (s in Content.shapes) {
+            Box(
+                Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(c.hover)
+                    .clickable(remember { MutableInteractionSource() }, indication = null) { haptic(android.view.HapticFeedbackConstants.CLOCK_TICK); Make.shape(s) },
+                contentAlignment = Alignment.Center,
+            ) { PrismText(icons[s] ?: s, style = TextStyle(fontSize = 22.sp, brush = Prism.grad)) }
+        }
     }
 }

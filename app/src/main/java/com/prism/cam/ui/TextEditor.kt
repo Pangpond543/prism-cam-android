@@ -43,7 +43,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.prism.cam.effects.Scene
+import com.prism.cam.studio.Content
+import com.prism.cam.studio.Layer
+import com.prism.cam.studio.Make
+import com.prism.cam.studio.Studio
 import com.prism.cam.i18n.T
 import com.prism.cam.ui.kit.PillKind
 import com.prism.cam.ui.kit.PrismChip
@@ -58,7 +61,7 @@ import com.prism.cam.ui.theme.PrismThemeAccess
  * [item] null = new text. Empty text on "done" removes it.
  */
 @Composable
-fun TextEditor(item: Scene.Text?, onClose: () -> Unit) {
+fun TextEditor(item: Layer?, onClose: () -> Unit) {
     var text by remember { mutableStateOf(item?.text ?: "") }
     var color by remember { mutableIntStateOf(item?.color ?: android.graphics.Color.WHITE) }
     var style by remember { mutableIntStateOf(item?.style ?: 0) }
@@ -67,9 +70,9 @@ fun TextEditor(item: Scene.Text?, onClose: () -> Unit) {
     fun done() {
         val t = text.trim()
         when {
-            item == null && t.isNotEmpty() -> Scene.addText(t, color, style)
-            item != null && t.isEmpty() -> Scene.remove(item.id)
-            item != null -> { item.text = t; item.color = color; item.style = style; Scene.touch() }
+            item == null && t.isNotEmpty() -> Make.text(t, color, style)
+            item != null && t.isEmpty() -> Studio.remove(item.id)
+            item != null -> { item.text = t; item.color = color; item.style = style; item.name = t.take(20); item.touchContent(); Studio.commit("text") }
         }
         onClose()
     }
@@ -110,7 +113,7 @@ fun TextEditor(item: Scene.Text?, onClose: () -> Unit) {
             }
             // colours
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                for (col in Scene.textColors) {
+                for (col in Content.textColors) {
                     val on = col == color
                     Box(
                         Modifier.size(if (on) 34.dp else 28.dp).clip(CircleShape).background(Color(col))
