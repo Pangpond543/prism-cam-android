@@ -396,5 +396,7 @@ object En {
         "พนมมือ" to "Pray",
         "ป้ายข้อความ" to "Text sign",
         "สายรุ้ง" to "Rainbow",
+        "ขยายแผง" to "Open panel",
+        "พับแผงลง" to "Fold panel down",
     )
 }

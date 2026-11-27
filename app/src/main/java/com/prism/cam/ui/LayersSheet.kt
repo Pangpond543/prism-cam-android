@@ -1,5 +1,6 @@
 package com.prism.cam.ui
 
+import com.prism.cam.ui.kit.hScrollFade
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -85,18 +86,18 @@ fun LayersSheet(open: Boolean, onClose: () -> Unit, onProps: (Layer) -> Unit, on
     }) {
         // ── scenes
         PrismLabel(T("ฉาก"))
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Studio.scenes.forEachIndexed { i, s -> PrismChip(s.name, i == Studio.current, { haptic(android.view.HapticFeedbackConstants.CLOCK_TICK); Studio.goScene(i) }) }
             PrismMiniButton("plus", { Studio.addScene() })
             PrismMiniButton("copy", { Studio.addScene(Studio.scene) })
             if (Studio.scenes.size > 1) PrismMiniButton("trash", { Studio.removeScene(Studio.current) })
         }
-        if (Studio.scenes.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (Studio.scenes.size > 1) Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (sec in listOf(0, 3, 5, 10)) PrismChip(if (sec == 0) T("ไม่เล่นอัตโนมัติ") else T("สไลด์ทุก") + " $sec " + T("วิ"), Studio.autoPlay == sec, { Studio.autoPlay = sec })
         }
         // ── templates
         PrismLabel(T("แม่แบบ"))
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (id in Make.templates) PrismChip(Make.templateIcons[id] + " " + T(Make.templateNames[id] ?: id), false, { haptic(android.view.HapticFeedbackConstants.CLOCK_TICK); Make.template(id) })
         }
         // ── add
@@ -111,7 +112,7 @@ fun LayersSheet(open: Boolean, onClose: () -> Unit, onProps: (Layer) -> Unit, on
         // ── camera layouts
         PrismLabel(T("วางกล้อง"))
         val names = mapOf("fill" to T("เต็มจอ"), "fit" to T("พอดีมีขอบ"), "pip" to T("จอเล็กมุม"), "half" to T("ครึ่งจอ"), "circle" to T("วงกลม"), "tilt" to T("เอียงเท่ๆ"))
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (k in Make.layouts) PrismChip(names[k] ?: k, false, { haptic(android.view.HapticFeedbackConstants.CLOCK_TICK); Make.cameraLayout(k) })
         }
         // ── list (front first)
@@ -191,7 +192,7 @@ private fun MediaLibrary() {
     }
     if (items.isEmpty()) return
     PrismLabel(T("ไฟล์ในแอป"))
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         for ((m, b) in items) {
             Box(
                 Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(PrismThemeAccess.colors.fill)

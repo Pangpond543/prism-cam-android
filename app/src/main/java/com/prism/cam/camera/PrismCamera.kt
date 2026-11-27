@@ -224,8 +224,10 @@ class PrismCamera(private val app: Context) {
         view.previewStreamState.observe(owner) { st ->
             val live = st == PreviewView.StreamState.STREAMING
             streaming = live
+            liveSince = if (live) SystemClock.elapsedRealtime() else 0L
             if (live) {
                 freeze = null
+                if (pendingShot) { pendingShot = false; scope.launch { kotlinx.coroutines.delay(SETTLE_MS); takePhoto() } }
                 if (holdPending && mode == Mode.Video) { holdPending = false; startRecording() }
                 val now = SystemClock.elapsedRealtime()
                 if (!firstFrameLogged) {
@@ -483,7 +485,8 @@ class PrismCamera(private val app: Context) {
     // ── small stills for the look thumbnails (the un-filtered picture is remembered while no look is on)
     private var rawSample: android.graphics.Bitmap? = null
     fun sampleForThumbs(): android.graphics.Bitmap? {
-        val b = try { view?.bitmap } catch (_: Throwable) { null } ?: return rawSample
+        val b = try { view?.bitmap } catch (t: Throwable) { PrismLog.i("ERR sample ${t.message}"); null }
+        if (b == null) return rawSample
         val w = 160
         val small = android.graphics.Bitmap.createScaledBitmap(b, w, (w.toFloat() * b.height / b.width).toInt().coerceAtLeast(1), true)
         if (small !== b) b.recycle()
@@ -620,8 +623,26 @@ class PrismCamera(private val app: Context) {
 
     // ───────────────────────────── photo ─────────────────────────────
 
+    // A press before the picture is live (app just opened, mode / lens switch, effects rebind) was captured from a
+    // camera whose exposure had not started: a black photo on the realme 9 (2026-11-27). Wait for the picture instead.
+    private var pendingShot = false
+    private var liveSince = 0L
+    private val SETTLE_MS = 250L
+    /** how long the picture has been live (0 = not live) — a copy of it taken in the first ~0.5 s can be black */
+    fun liveMs(): Long = if (!streaming || liveSince == 0L) 0L else SystemClock.elapsedRealtime() - liveSince
+
     fun takePhoto() {
         val ic = imageCapture ?: return
+        if (!streaming || liveSince == 0L) {
+            if (!pendingShot) {
+                pendingShot = true
+                PrismLog.i("SHOT waits for the picture")
+                scope.launch { kotlinx.coroutines.delay(4000); if (pendingShot) { pendingShot = false; PrismLog.i("SHOT dropped: picture never came") } }
+            }
+            return
+        }
+        val young = SETTLE_MS - (SystemClock.elapsedRealtime() - liveSince)
+        if (young > 0) { scope.launch { kotlinx.coroutines.delay(young); takePhoto() }; return }
         val t0 = SystemClock.elapsedRealtime()
         shots++
         playSound(MediaActionSound.SHUTTER_CLICK)

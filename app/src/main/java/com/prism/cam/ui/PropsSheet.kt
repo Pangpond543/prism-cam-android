@@ -1,5 +1,6 @@
 package com.prism.cam.ui
 
+import com.prism.cam.ui.kit.hScrollFade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -68,10 +69,10 @@ fun PropsSheet(layer: Layer?, onClose: () -> Unit, onEditText: (Layer) -> Unit, 
             if (l.type != LType.Camera || Studio.layers.count { it.type == LType.Camera } > 1) PrismMiniButton("trash", { Studio.remove(l.id); onClose() })
         }
     }, header = {
-        if (l != null) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(T("ตำแหน่ง") to "sliders", T("สี") to "drop", T("ติดหน้า/มือ") to "face", T("เคลื่อนไหว") to "anim", T("เนื้อหา") to "edit")
-                .forEachIndexed { i, (s, ic) -> PrismChip(s, tab == i, { tab = i }, icon = ic) }
-        }
+        if (l != null) com.prism.cam.ui.kit.PrismTabRow(
+            listOf(T("ตำแหน่ง") to "sliders", T("สี") to "drop", T("ติดหน้า/มือ") to "face", T("เคลื่อนไหว") to "anim", T("เนื้อหา") to "edit"),
+            tab, { tab = it },
+        )
     }) {
         if (l == null) return@PrismSheet
         val done: () -> Unit = { Studio.commit("props") }
@@ -108,14 +109,14 @@ fun PropsSheet(layer: Layer?, onClose: () -> Unit, onEditText: (Layer) -> Unit, 
                     PrismSlider(T("ล่าง"), l.cropB, 0f..0.45f, { v -> ch { l.cropB = v } }, onDone = done, format = ::pct)
                 }
                 PrismLabel(T("ผสมภาพ"))
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("normal" to T("ปกติ"), "screen" to T("สว่างขึ้น"), "add" to T("เรืองแสง"), "multiply" to T("มืดลง"))
                         .forEach { (k, s) -> PrismChip(s, l.blend == k, { l.blend = k; done() }) }
                 }
             }
             1 -> {
                 PrismLabel(T("ฟิลเตอร์"))
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (lk in Looks.all) PrismChip(T(lk.th), l.look == lk.id, { l.look = lk.id; done() })
                 }
                 PrismSlider(T("ความสว่าง"), l.bright, -1f..1f, { v -> ch { l.bright = v } }, onDone = done, format = ::signed, center = true)
@@ -175,7 +176,7 @@ private fun KeyframePanel(l: Layer, done: () -> Unit) {
 private fun AttachTab(l: Layer, vision: Vision?, done: () -> Unit) {
     val a = l.attach
     fun ch(f: () -> Unit) { f(); Studio.touch() }
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PrismChip(T("ไม่ติด"), a.kind == "", { a.kind = ""; done() })
         PrismChip(T("ติดหน้า"), a.kind == "face", {
             if (a.kind != "face") { a.kind = "face"; a.point = "eyes"; a.who = "all"; a.size = (l.w / .3f).coerceIn(.3f, 2f); a.ox = 0f; a.oy = 0f }
@@ -206,7 +207,7 @@ private fun AttachTab(l: Layer, vision: Vision?, done: () -> Unit) {
         for ((k, s) in if (a.kind == "face") facePts else handPts) PrismChip(s, a.point == k, { a.point = k; done() })
     }
     if (a.kind != "hands2") PrismLabel(if (a.kind == "face") T("หน้าไหน") else T("มือไหน"))
-    if (a.kind != "hands2") Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (a.kind != "hands2") Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (a.kind == "face") {
             PrismChip(T("หน้าแรก"), a.who == "all" || a.who == "0", { a.who = "0"; done() })
             for (i in 1..3) PrismChip(T("หน้าที่") + " ${i + 1}", a.who == "$i", { a.who = "$i"; done() })
@@ -257,7 +258,7 @@ private fun ContentTab(l: Layer, onEditText: (Layer) -> Unit, done: () -> Unit) 
             for (e in Content.stickers) PrismChip(e, l.text == e, { content { l.text = e; l.name = e } })
         }
         LType.Shape -> {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (s in Content.shapes) PrismChip(s, l.shape == s, { content { l.shape = s } })
             }
             PrismSwitchRow(T("ไล่สี"), null, l.grad, { content { l.grad = it } })
@@ -266,7 +267,7 @@ private fun ContentTab(l: Layer, onEditText: (Layer) -> Unit, done: () -> Unit) 
             if (l.grad) ColorDots(l.color2) { c -> content { l.color2 = c } }
         }
         LType.Frame -> {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (f in Content.frames) PrismChip(f, l.preset == f, { content { l.preset = f } })
             }
             ColorDots(l.color) { c -> content { l.color = c } }
@@ -301,7 +302,7 @@ private fun ContentTab(l: Layer, onEditText: (Layer) -> Unit, done: () -> Unit) 
 fun ColorDots(selected: Int, onPick: (Int) -> Unit) {
     val haptic = rememberHaptic()
     val cols = Content.textColors + listOf(0xFF00D000.toInt(), 0xFF6CC7FF.toInt(), 0xFF1FB5A6.toInt())
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         for (col in cols) {
             val on = col == selected
             Box(
@@ -317,4 +318,6 @@ fun ColorDots(selected: Int, onPick: (Int) -> Unit) {
 object TestTabs {
     var fx by androidx.compose.runtime.mutableIntStateOf(-1)
     var props by androidx.compose.runtime.mutableIntStateOf(-1)
+    /** test act `fold:1|0` — folds / opens every open sheet (grip) */
+    var fold by androidx.compose.runtime.mutableIntStateOf(-1)
 }

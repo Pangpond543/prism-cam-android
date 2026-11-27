@@ -1,5 +1,6 @@
 package com.prism.cam.ui
 
+import com.prism.cam.ui.kit.hScrollFade
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
@@ -46,6 +47,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -96,7 +98,10 @@ fun FxSheet(
     val haptic = rememberHaptic()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val land = maxWidth > maxHeight
-        AnimatedVisibility(open, enter = fadeIn(tween(160)), exit = fadeOut(tween(160))) {
+        var folded by remember { mutableStateOf(false) }   // portrait grip: fold to the tab row (PrismSheet)
+        androidx.compose.runtime.LaunchedEffect(open) { if (!open) folded = false }
+        androidx.compose.runtime.LaunchedEffect(TestTabs.fold) { if (TestTabs.fold >= 0) folded = TestTabs.fold == 1 }
+        AnimatedVisibility(open && !(folded && !land), enter = fadeIn(tween(160)), exit = fadeOut(tween(160))) {
             Box(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null) { onClose() })
         }
         AnimatedVisibility(
@@ -113,17 +118,16 @@ fun FxSheet(
             val shape = if (land) RoundedCornerShape(28.dp) else RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
             Column(
                 Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
-                    .then(if (land) Modifier.padding(12.dp).width(420.dp).fillMaxHeight() else Modifier.widthIn(max = 640.dp).fillMaxWidth().heightIn(max = maxHeight * .5f))
+                    .then(if (land) Modifier.padding(12.dp).width(minOf(420.dp, maxWidth * .48f)).fillMaxHeight() else Modifier.widthIn(max = 640.dp).fillMaxWidth().heightIn(max = maxHeight * .5f))
                     .prismPane(c, shape, strong = true, elevation = 22.dp)
                     .clickable(remember { MutableInteractionSource() }, indication = null) { }
-                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                    .padding(start = 18.dp, end = 18.dp, top = if (land) 14.dp else 0.dp, bottom = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (!land) SheetGrip(folded) { folded = it }
                 // tab chips + close
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        tabs.forEachIndexed { i, (label, icon) -> PrismChip(label, tab == i, { tab = i }, icon = icon) }
-                    }
+                    com.prism.cam.ui.kit.PrismTabRow(tabs, tab, { tab = it; folded = false }, Modifier.weight(1f))
                     Spacer(Modifier.width(8.dp))
                     Box(
                         Modifier.size(34.dp).clip(CircleShape).background(c.hover)
@@ -131,7 +135,7 @@ fun FxSheet(
                         contentAlignment = Alignment.Center,
                     ) { PrismIcon("x", size = 16.dp, tint = c.ink2) }
                 }
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (!(folded && !land)) Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     when (tab) {
                         0 -> LookRow(cam)
                         1 -> {
@@ -168,11 +172,16 @@ fun FxSheet(
 private fun LookRow(cam: PrismCamera) {
     val haptic = rememberHaptic()
     val c = PrismThemeAccess.colors
-    val sample = remember { cam.sampleForThumbs() }
+    // the still can only be taken once the picture is live (sheet opened right after start / a mode switch → retry)
+    val sample by androidx.compose.runtime.produceState<Bitmap?>(null, cam.streaming) {
+        value = cam.sampleForThumbs()
+        val young = 600 - cam.liveMs()
+        if (cam.streaming && young > 0) { kotlinx.coroutines.delay(young); value = cam.sampleForThumbs() }
+    }
     val thumbs: List<Pair<Look, ImageBitmap?>> = remember(sample) {
         Looks.all.map { l -> l to sample?.let { s -> tint(s, l).asImageBitmap() } }
     }
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         for ((l, img) in thumbs) {
             val on = cam.look.id == l.id
             Column(

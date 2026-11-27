@@ -373,6 +373,8 @@ class MainActivity : ComponentActivity() {
                     "fxsheet" -> fxOpen = v != "0"
                     "fxtab" -> com.prism.cam.ui.TestTabs.fx = v?.toIntOrNull() ?: 0
                     "propstab" -> com.prism.cam.ui.TestTabs.props = v?.toIntOrNull() ?: 0
+                    "fold" -> com.prism.cam.ui.TestTabs.fold = v?.toIntOrNull() ?: 1
+                    "textedit" -> textEdit = NEW_TEXT
                     "bg" -> when (v) { "blur" -> vision.useBg(1); "replace" -> vision.useBgId("sunset"); else -> vision.useBg(0) }
                     "face" -> com.prism.cam.studio.Make.facePack(v?.takeIf { it != "none" })
                     "peace" -> vision.usePeace(v == "1")
@@ -406,6 +408,7 @@ class MainActivity : ComponentActivity() {
                     "orient" -> testOrient = when (v) {
                         "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                         "landscape" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                        "rlandscape" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
                         else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                     }
                 }

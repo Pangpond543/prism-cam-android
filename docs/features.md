@@ -161,3 +161,12 @@
 ## Speed (2.0.0)
 - "…" → Speed: fps, GPU ms per frame, canvas size, AI ms, layer count, GPU name. Light mode: canvas ≤ 1280 px and AI
   every 100 ms instead of 66.
+
+## Phone fit (2.0.1)
+- Shutter / volume key / timer / gesture pressed before the picture is live → the photo is taken as soon as the picture
+  is live (+ 250 ms), never a black frame.
+- Portrait sheets (✦, layers, layer settings) have a grip: tap / drag down = fold to the header (picture visible,
+  touches reach the picture), tap / drag up = open. Picking a ✦ tab while folded opens it. Back / ✕ closes.
+- Landscape side sheets ≤ 48 % of the width. Tab rows scroll the chosen tab into view; sideways rows fade at a cut edge.
+- Text editor scrolls; the keyboard's ✓ key = done.
+- Test acts: `fold:1|0` (fold / open open sheets), `textedit` (new text editor), `orient:rlandscape`.

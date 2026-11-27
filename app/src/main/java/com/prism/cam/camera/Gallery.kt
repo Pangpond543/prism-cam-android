@@ -90,5 +90,5 @@ object Gallery {
         } else ctx.contentResolver.openInputStream(uri)?.use { s ->
             BitmapFactory.decodeStream(s, null, BitmapFactory.Options().apply { inSampleSize = 16 })
         }
-    } catch (_: Throwable) { null }
+    } catch (t: Throwable) { com.prism.cam.PrismLog.i("ERR thumbnail $uri ${t.javaClass.simpleName} ${t.message}"); null }
 }

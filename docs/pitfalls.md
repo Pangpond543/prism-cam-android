@@ -26,6 +26,21 @@
   `tools/shots.sh` therefore force-stops and cold-starts for each act; the activity also uses `addOnNewIntentListener`.
 - From Git Bash, paths given to `adb shell` get mangled (`/sdcard` → `C:/Program Files/Git/sdcard`): `export MSYS_NO_PATHCONV=1`.
 
+## User's phone (realme 9 RMX3521, Android 14 / API 34, Snapdragon 680 / Adreno 610) — 2026-11-27
+- 1080×2400 at 480 dpi = **360 × 800 dp**: only ~3 tab chips fit, sheets at 50–62 % of the height cover most of the
+  4:3 picture. Sheets have a fold grip; tab rows scroll to the chosen tab. Check every new panel at 360 dp wide.
+- Punch-hole camera top-left (150 × 115 px), gesture navigation (side swipes = system Back), 90 Hz screen.
+- **A photo taken before the preview is live comes out black** (no AE yet). `takePhoto()` waits for
+  `PreviewView.StreamState.STREAMING` + 250 ms. Test act `photo` fires 200 ms after a mode select — it found this.
+- `PreviewView.bitmap` is null before the stream is live and can be black in the first ~0.5 s after → anything that
+  copies the picture (look thumbnails, freeze still) must wait for `cam.liveMs() >= 600`.
+- No ZSL on this phone (`zsl=false`), photo 3456×2592. AI with segmenter + face + hands = ~128 ms per frame (~7 fps);
+  the GPU is not the limit (7.8 ms per frame with everything on).
+- A USB-debugging "Allow" prompt and the camera permission must be tapped by the user on the phone — never inject taps.
+- realme shows its own floating "rotate" button over the app when auto-rotate is off — that is system UI, not ours.
+- Test photos land in the user's real gallery (Pictures/Prism Cam). Note every content id you create and offer to
+  delete them at the end; the front camera may capture the user.
+
 ## Camera (phase 1)
 - **Again** the Kotlin JVM clash: `var mode by mutableStateOf(..); private set` + `fun setMode(..)` does not compile.
   Camera methods are `selectMode / zoomTo / exposeTo`. Never name a function `set<Property>` next to a state property.

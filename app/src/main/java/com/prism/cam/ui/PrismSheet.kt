@@ -37,6 +37,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.prism.cam.i18n.T
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,7 +75,12 @@ fun PrismSheet(
     BackHandler(open) { onClose() }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val land = maxWidth > maxHeight
-        AnimatedVisibility(open, enter = fadeIn(tween(160)), exit = fadeOut(tween(160))) {
+        // portrait: the grip folds the sheet down to its header so the picture (and the layer being edited) shows;
+        // touches then reach the picture (drag the layer) — the sheet stays open until ✕ / Back
+        var folded by remember { mutableStateOf(false) }
+        LaunchedEffect(open) { if (!open) folded = false }
+        androidx.compose.runtime.LaunchedEffect(TestTabs.fold) { if (TestTabs.fold >= 0) folded = TestTabs.fold == 1 }
+        AnimatedVisibility(open && !(folded && !land), enter = fadeIn(tween(160)), exit = fadeOut(tween(160))) {
             Box(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null) { onClose() })
         }
         AnimatedVisibility(
@@ -78,12 +93,13 @@ fun PrismSheet(
             val shape = if (land) RoundedCornerShape(28.dp) else RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
             Column(
                 Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
-                    .then(if (land) Modifier.padding(12.dp).width(440.dp).fillMaxHeight() else Modifier.widthIn(max = 680.dp).fillMaxWidth().heightIn(max = maxHeight * (if (tall) .62f else .5f)))
+                    .then(if (land) Modifier.padding(12.dp).width(minOf(440.dp, maxWidth * .48f)).fillMaxHeight() else Modifier.widthIn(max = 680.dp).fillMaxWidth().heightIn(max = maxHeight * (if (tall) .62f else .5f)))
                     .prismPane(c, shape, strong = true, elevation = 22.dp)
                     .clickable(remember { MutableInteractionSource() }, indication = null) { }
-                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                    .padding(start = 18.dp, end = 18.dp, top = if (land) 14.dp else 0.dp, bottom = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (!land) SheetGrip(folded) { folded = it }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     PrismText(title, Modifier.weight(1f), style = PrismThemeAccess.type.title)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) { actions() }
@@ -95,8 +111,38 @@ fun PrismSheet(
                     ) { PrismIcon("x", size = 16.dp, tint = c.ink2) }
                 }
                 header()
-                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
+                if (!(folded && !land)) Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
             }
         }
+    }
+}
+
+/**
+ * Handle on top of a portrait sheet: tap or drag down = fold the sheet to its header (see the picture), tap or drag
+ * up = open it again. Phones have little room under the picture, so a sheet covered the layer being edited.
+ */
+@Composable
+fun SheetGrip(folded: Boolean, onFold: (Boolean) -> Unit) {
+    val c = PrismThemeAccess.colors
+    val haptic = com.prism.cam.ui.kit.rememberHaptic()
+    val fold by androidx.compose.runtime.rememberUpdatedState(folded)
+    val set by androidx.compose.runtime.rememberUpdatedState(onFold)
+    Box(
+        Modifier.fillMaxWidth().height(22.dp)
+            .clickable(remember { MutableInteractionSource() }, indication = null) { haptic(android.view.HapticFeedbackConstants.CLOCK_TICK); onFold(!folded) }
+            .pointerInput(Unit) {
+                var dy = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { dy = 0f },
+                    onDragEnd = {
+                        val want = if (dy > 16.dp.toPx()) true else if (dy < -16.dp.toPx()) false else fold
+                        if (want != fold) { haptic(android.view.HapticFeedbackConstants.CLOCK_TICK); set(want) }
+                    },
+                ) { _, d -> dy += d }
+            }
+            .semantics { contentDescription = if (folded) T("ขยายแผง") else T("พับแผงลง") },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.padding(top = 4.dp).width(38.dp).height(4.dp).clip(RoundedCornerShape(50)).background(c.ink3.copy(alpha = .45f)))
     }
 }

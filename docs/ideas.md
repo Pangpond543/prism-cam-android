@@ -10,3 +10,5 @@
 - 2026-11-25 — between two hands: stretch only sideways (a ribbon / rope that keeps its height) — ยังไม่ทำ
 - 2026-11-25 — between a hand and the face (e.g. a phone held to the ear, a microphone to the mouth) — ยังไม่ทำ
 - 2026-11-25 — teach your own two-hand poses (desktop handtrain "pair") — ยังไม่ทำ
+- 2026-11-27 — faster tracking on mid-range phones (realme 9: ~7 fps with background + face + hands): run hands only
+  while something needs them in view, alternate trackers, or switch "light mode" on by itself — ยังไม่ทำ

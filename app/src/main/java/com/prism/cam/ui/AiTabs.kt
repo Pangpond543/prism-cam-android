@@ -1,5 +1,6 @@
 package com.prism.cam.ui
 
+import com.prism.cam.ui.kit.hScrollFade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -85,7 +86,7 @@ private fun BackgroundTab(v: Vision, onPickPhoto: () -> Unit) {
             )
         }
         if (v.bg == 2) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 for (id in Vision.backgrounds) {
                     val on = v.bgId == id
                     val cols = when (id) {
@@ -132,13 +133,13 @@ private fun FaceTab(v: Vision) {
             }
         }
         PrismLabel(T("ระบายหน้า"))
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val on = Make.facePaintOn()
             PrismChip(T("ไม่มี"), on == null, { Make.facePaint(null) })
             for (id in FaceArt.paints) PrismChip(T(FaceArt.paintNames[id] ?: id), on == id, { haptic(android.view.HapticFeedbackConstants.CLOCK_TICK); Make.facePaint(id) })
         }
         PrismLabel(T("ตัวละคร VTuber (ขยับตามหน้าคุณ)"))
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val on = Make.avatarOn()
             PrismChip(T("ไม่มี"), on == null, { Studio.layers.removeAll { it.type == LType.Avatar }; Studio.commit("avatar") })
             for (id in FaceArt.avatars) PrismChip(T(FaceArt.avatarNames[id] ?: id), on == id, { haptic(android.view.HapticFeedbackConstants.CLOCK_TICK); Make.avatar(id) })

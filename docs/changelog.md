@@ -112,3 +112,27 @@
     act that changes scenes keeps the user's scenes first (`files/studio/before-test.json`).
 
 - 2026-11-26 — **2.0.0 released** on GitHub (`apk/Prism-Cam-2.0.0.apk`, built 11-25 23:14 after the last code change; i18n audit empty). The in-app updater of 1.0.x sees it.
+- 2026-11-27 — **2.0.1: tuned for phones** — user: "tune it for my phone, it was built on the tablet — make it work on
+  both". First run on the user's phone **realme 9 (RMX3521)**, Android 14 / API 34, Snapdragon 680 (Adreno 610),
+  1080×2400 at 480 dpi (360 × 800 dp), 90 Hz, punch-hole camera top-left, gesture navigation. Every screen checked
+  (portrait, landscape both ways, sheets, menu, text editor with the keyboard, front camera, clean screen, grid, timer,
+  effects, AI, recording with effects, photo with effects).
+  - **Fix: black photo** when the shutter (or a volume key / timer / gesture) fired before the picture was live — right
+    after opening the app, a mode / lens switch or an effects rebind. The press now waits for the live picture
+    (+ 250 ms) and shoots then; dropped after 4 s if the picture never comes. Proven: press during the video → photo
+    switch logged "SHOT waits for the picture", photo average brightness 160 (the black one was 0).
+  - **Sheets fold down (portrait):** a grip on top of every sheet (✦, layers, layer settings). Tap / drag down = only the
+    header stays, the picture and the layer being edited show, and touches reach the picture (drag the layer); tap /
+    drag up = open again. On the phone a sheet covered most of the picture.
+  - **Side sheets in landscape** take at most 48 % of the width (phone held sideways: 384 dp instead of 440); tablet unchanged.
+  - **Tabs scroll to the chosen tab** (✦ sheet, layer settings): only ~3 tabs fit on a 360 dp phone.
+  - **Every sideways row fades at the cut edge** (tabs, chips, colours) so it is clear there is more to the side.
+  - **Filter previews** used a placeholder when the ✦ sheet opened before the picture was live (and a copy taken in the
+    first ~0.5 s was black): taken again once the picture has been live 0.6 s.
+  - **Text editor:** scrolls (phone held sideways with the keyboard up left ~120 dp — "done" was off screen); the
+    keyboard's ✓ key finishes the text.
+  - Measured on the realme 9: open → first frame 1.0–1.2 s (cold process), effects 30 fps at 7.8 ms GPU per frame
+    (party template + background blur + face + hands), AI ~7 fps with segmenter + face + hands together (128 ms),
+    photo with effects saved in 1.8–3.2 s, plain photo 0.5–0.7 s (3456×2592, no ZSL on this phone), video with effects 1080p
+    17 Mbps.
+  - Test acts: `fold:1|0`, `textedit`, `orient:rlandscape`.

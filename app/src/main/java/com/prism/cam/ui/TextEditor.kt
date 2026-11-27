@@ -24,6 +24,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.prism.cam.ui.kit.hScrollFade
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -84,7 +87,8 @@ fun TextEditor(item: Layer?, onClose: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            Modifier.padding(20.dp).widthIn(max = 560.dp).fillMaxWidth()
+            // scrolls: a phone held sideways with the keyboard up leaves ~120 dp — "done" must stay reachable
+            Modifier.verticalScroll(rememberScrollState()).padding(20.dp).widthIn(max = 560.dp).fillMaxWidth()
                 .clickable(remember { MutableInteractionSource() }, indication = null) { },
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -103,6 +107,9 @@ fun TextEditor(item: Layer?, onClose: () -> Unit) {
                     Modifier.focusRequester(focus).widthIn(min = 120.dp).heightIn(min = 48.dp),
                     textStyle = shown,
                     cursorBrush = SolidColor(Color.White),
+                    // the keyboard's ✓ key finishes (held sideways the keyboard covers the "done" pill on a phone)
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { done() }),
                     decorationBox = { inner ->
                         Box(contentAlignment = Alignment.Center) {
                             if (text.isEmpty()) com.prism.cam.ui.kit.PrismText(T("พิมพ์ข้อความ…"), style = base.copy(color = Color(0x80FFFFFF)))
@@ -112,7 +119,7 @@ fun TextEditor(item: Layer?, onClose: () -> Unit) {
                 )
             }
             // colours
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 for (col in Content.textColors) {
                     val on = col == color
                     Box(
@@ -123,7 +130,7 @@ fun TextEditor(item: Layer?, onClose: () -> Unit) {
                 }
             }
             // styles
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.hScrollFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(T("เงา"), T("ขอบ"), T("ป้าย"), "Prism").forEachIndexed { i, s -> PrismChip(s, style == i, { style = i }) }
             }
             Row(
