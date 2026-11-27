@@ -136,3 +136,4 @@
     photo with effects saved in 1.8–3.2 s, plain photo 0.5–0.7 s (3456×2592, no ZSL on this phone), video with effects 1080p
     17 Mbps.
   - Test acts: `fold:1|0`, `textedit`, `orient:rlandscape`.
+- 2026-11-27 — **2.0.1 released** on GitHub (`apk/Prism-Cam-2.0.1.apk`, installed on the realme 9 first, log `START ver=2.0.1 code=21`). Test photos / videos made on the user's phone were deleted with their OK. Not yet installed on the tablet — it gets it from the in-app updater.
